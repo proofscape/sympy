@@ -17,7 +17,7 @@ from sympy.core import Symbol
 from sympy.core.function import arity, Function, UndefinedFunction
 from sympy.core.numbers import Integer
 from sympy.core.relational import Relational
-from sympy.core.sympify import sympify, _sympify
+from sympy.core.sympify import sympify, _sympify, SympifyError
 from sympy.utilities.iterables import iterable
 from sympy.utilities.misc import filldedent, func_name
 from sympy.functions.elementary.miscellaneous import Max, Min
@@ -1275,7 +1275,7 @@ class _T():
 T = _T()
 
 
-class ControlledEvaluationException(Exception):
+class ControlledEvaluationException(SympifyError):
     ...
 
 
