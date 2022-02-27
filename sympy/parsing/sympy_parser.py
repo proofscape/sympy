@@ -1381,7 +1381,7 @@ class ControlledEvaluator(ast.NodeTransformer):
         K = {k: v for k, v in node.keywords}
         mod = getattr(F, '__module__') or ''
         if (
-            mod.startswith('sympy.') or
+            mod == 'sympy' or mod.startswith('sympy.') or
             isinstance(F, UndefinedFunction) or
             F is abs or F is pow or
             F in self.local_dict.values()
