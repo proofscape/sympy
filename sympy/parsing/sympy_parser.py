@@ -1376,10 +1376,10 @@ class ControlledEvaluator(ast.NodeTransformer):
         self.recurse(node)
         F = node.func
         if F is sympify or F is _sympify:
-            raise ControlledEvaluationException(f'Disallowed callable: {getattr(F, "__name__")}')
+            raise ControlledEvaluationException(f'Disallowed callable: {getattr(F, "__name__", "<noname>")}')
         A = node.args or []
         K = {k: v for k, v in node.keywords}
-        mod = getattr(F, '__module__') or ''
+        mod = getattr(F, '__module__', None) or ''
         if (
             mod == 'sympy' or mod.startswith('sympy.') or
             isinstance(F, UndefinedFunction) or
@@ -1387,7 +1387,7 @@ class ControlledEvaluator(ast.NodeTransformer):
             F in self.local_dict.values()
         ):
             return F(*A, **K)
-        raise ControlledEvaluationException(f'Disallowed callable: {getattr(F, "__name__")}')
+        raise ControlledEvaluationException(f'Disallowed callable: {getattr(F, "__name__", "<noname>")}')
 
     def visit_Name(self, node):
         name = node.id
