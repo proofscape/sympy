@@ -99,7 +99,7 @@ def _convert_numpy_types(a, **sympify_args):
 
 
 def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
-        evaluate=None, controlled=True):
+        evaluate=None):
     """
     Converts an arbitrary expression to a type that can be used inside SymPy.
 
@@ -492,7 +492,7 @@ sympify() performed the string fallback resulting in the following string:
 
     try:
         a = a.replace('\n', '')
-        expr = parse_expr(a, local_dict=locals, transformations=transformations, evaluate=evaluate, controlled=controlled)
+        expr = parse_expr(a, local_dict=locals, transformations=transformations, evaluate=evaluate)
     except (TokenError, SyntaxError) as exc:
         raise SympifyError('could not parse %r' % a, exc)
 
