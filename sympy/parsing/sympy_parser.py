@@ -14,7 +14,7 @@ import types
 from sympy.assumptions.ask import AssumptionKeys
 from sympy.core.basic import Basic
 from sympy.core import Symbol
-from sympy.core.function import arity, Function
+from sympy.core.function import arity, UndefinedFunction
 from sympy.parsing.controlled import ControlledEvaluator
 from sympy.utilities.iterables import iterable
 from sympy.utilities.misc import filldedent, func_name
@@ -230,7 +230,7 @@ def _implicit_multiplication(tokens, local_dict, global_dict):
         elif (isinstance(tok, AppliedFunction) and
               nextTok[0] == OP and nextTok[1] == '('):
             # Applied function followed by an open parenthesis
-            if tok.function[1] == "Function":
+            if tok.function[1] == "UndefinedFunction":
                 result[-1].function = (result[-1].function[0], 'Symbol')
             result.append((OP, '*'))
         elif (tok[0] == OP and tok[1] == ')' and
@@ -341,7 +341,7 @@ def function_exponentiation(tokens, local_dict, global_dict):
             if _token_callable(tok, local_dict, global_dict):
                 consuming_exponent = True
         elif consuming_exponent:
-            if tok[0] == NAME and tok[1] == 'Function':
+            if tok[0] == NAME and tok[1] == 'UndefinedFunction':
                 tok = (NAME, 'Symbol')
             exponent.append(tok)
 
@@ -406,14 +406,14 @@ def split_symbols_custom(predicate):
                 continue
             split_previous=False
 
-            if tok[0] == NAME and tok[1] in ['Symbol', 'Function']:
+            if tok[0] == NAME and tok[1] in ['Symbol', 'UndefinedFunction']:
                 split = True
 
             elif split and tok[0] == NAME:
                 symbol = tok[1][1:-1]
 
                 if predicate(symbol):
-                    tok_type = result[-2][1]  # Symbol or Function
+                    tok_type = result[-2][1]  # Symbol or UndefinedFunction
                     del result[-2:]  # Get rid of the call to Symbol
 
                     i = 0
@@ -543,7 +543,7 @@ def implicit_multiplication_application(result, local_dict, global_dict):
 
 
 def auto_symbol(tokens, local_dict, global_dict):
-    """Inserts calls to ``Symbol``/``Function`` for undefined variables."""
+    """Inserts calls to ``Symbol``/``UndefinedFunction`` for undefined variables."""
     result = []
     prevTok = (None, None)
 
@@ -568,7 +568,7 @@ def auto_symbol(tokens, local_dict, global_dict):
             elif name in local_dict:
                 local_dict.setdefault(null, set()).add(name)
                 if nextTokVal == '(':
-                    local_dict[name] = Function(name)
+                    local_dict[name] = UndefinedFunction(name)
                 else:
                     local_dict[name] = Symbol(name)
                 result.append((NAME, name))
@@ -580,7 +580,7 @@ def auto_symbol(tokens, local_dict, global_dict):
                     continue
 
             result.extend([
-                (NAME, 'Symbol' if nextTokVal != '(' else 'Function'),
+                (NAME, 'Symbol' if nextTokVal != '(' else 'UndefinedFunction'),
                 (OP, '('),
                 (NAME, repr(str(name))),
                 (OP, ')'),
@@ -1075,6 +1075,7 @@ def parse_expr(s, local_dict=None, transformations=standard_transformations,
             global_dict[name] = obj
     global_dict['max'] = Max
     global_dict['min'] = Min
+    global_dict['UndefinedFunction'] = UndefinedFunction
 
     # Apply transformations. Result is still a string.
     code = stringify_expr(s, local_dict, global_dict, transformations)
