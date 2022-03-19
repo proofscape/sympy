@@ -262,16 +262,17 @@ class NamedAllowedCallable(AllowedCallable):
         return self._name
 
 
-from typing import List, Optional as o, Union as u
+from typing import List, Tuple, Optional as o, Union as u
 
 from sympy.assumptions import Q
 
 from sympy.core.expr import (
     Add, Expr, Mul, Pow,
 )
+from sympy.core.function import UndefinedFunction
 from sympy.core.numbers import Float, Integer, Number, Rational
-from sympy.core.relational import Equality
-from sympy.core.singleton import SingletonRegistry
+from sympy.core.relational import Equality, Relational
+from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
 
 from sympy.functions.combinatorial.factorials import factorial, factorial2
@@ -285,6 +286,9 @@ from sympy.functions.elementary.hyperbolic import (
 )
 from sympy.functions.elementary.miscellaneous import (
     cbrt, sqrt, Max, Min,
+)
+from sympy.functions.elementary.piecewise import (
+    Piecewise, ExprCondPair
 )
 from sympy.functions.elementary.trigonometric import (
     acos, acot, acsc, asec, asin, atan, atan2,
@@ -322,13 +326,15 @@ sympy_unit_tests_callables = [
     c(Mul, t(iExpr), evaluate=bool),
     c(Pow, iExpr, iExpr, evaluate=bool),
 
+    c(UndefinedFunction, s.UWORD),
+
     c(Float, a(fiExpr, s.NUMBER), precision=Int),
     c(Integer, a(iExpr, s.NUMBER)),
     c(Number, a(fiExpr, s.NUMBER)),
     c(Rational, a(fiExpr, s.NUMBER), t(iExpr)),
 
     c(Equality, Expr, Expr),
-    c(SingletonRegistry, fiExpr),
+    c(S, fiExpr),
     c(Symbol, s.UWORD),
 
     c(factorial, Expr),
@@ -343,6 +349,9 @@ sympy_unit_tests_callables = [
 
     c(exp, Expr, evaluate=bool),
     c(log, Expr, t(Expr), evaluate=bool),
+
+    c(Piecewise, t(u[ExprCondPair, Tuple[Expr, Relational]])),
+    c(ExprCondPair, Expr, Relational),
 
     c(cosh, Expr, evaluate=bool),
     c(coth, Expr, evaluate=bool),
