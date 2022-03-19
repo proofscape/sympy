@@ -4,7 +4,7 @@ from sympy.concrete.products import (Product, product)
 from sympy.concrete.summations import Sum
 from sympy.core.add import Add
 from sympy.core.evalf import N
-from sympy.core.function import (Function, nfloat)
+from sympy.core.function import (expand_log, Function, nfloat)
 from sympy.core.mul import Mul
 from sympy.core import (GoldenRatio)
 from sympy.core.numbers import (AlgebraicNumber, E, Float, I, Rational,
@@ -21,6 +21,7 @@ from sympy.functions.elementary.exponential import (exp, log)
 from sympy.functions.elementary.hyperbolic import (acosh, cosh)
 from sympy.functions.elementary.integers import (ceiling, floor)
 from sympy.functions.elementary.miscellaneous import (Max, sqrt)
+from sympy.functions.elementary.piecewise import Piecewise
 from sympy.functions.elementary.trigonometric import (acos, atan, cos, sin, tan)
 from sympy.integrals.integrals import (Integral, integrate)
 from sympy.polys.polytools import factor
@@ -205,7 +206,7 @@ def test_evalf_ramanujan():
 def test_evalf_bugs():
     assert NS(sin(1) + exp(-10**10), 10) == NS(sin(1), 10)
     assert NS(exp(10**10) + sin(1), 10) == NS(exp(10**10), 10)
-    assert NS('expand_log(log(1+1/10**50))', 20) == '1.0000000000000000000e-50'
+    assert NS(expand_log(log(1+S(1)/10**50)), 20) == '1.0000000000000000000e-50'
     assert NS('log(10**100,10)', 10) == '100.0000000'
     assert NS('log(2)', 10) == '0.6931471806'
     assert NS(
@@ -423,7 +424,7 @@ def test_bugs():
 def test_subs():
     assert NS('besseli(-x, y) - besseli(x, y)', subs={x: 3.5, y: 20.0}) == \
         '-4.92535585957223e-10'
-    assert NS('Piecewise((x, x>0)) + Piecewise((1-x, x>0))', subs={x: 0.1}) == \
+    assert NS(Piecewise((x, x>0)) + Piecewise((1-x, x>0)), subs={x: 0.1}) == \
         '1.00000000000000'
     raises(TypeError, lambda: x.evalf(subs=(x, 1)))
 

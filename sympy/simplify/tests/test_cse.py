@@ -7,7 +7,7 @@ from sympy.core.containers import Tuple
 from sympy.core.function import Function
 from sympy.core.mul import Mul
 from sympy.core.power import Pow
-from sympy.core.relational import Eq
+from sympy.core.relational import Eq, Equality, StrictLessThan
 from sympy.core.singleton import S
 from sympy.core.symbol import (Symbol, symbols)
 from sympy.core.sympify import sympify
@@ -405,13 +405,10 @@ def test_symbols_exhausted_error():
 
 def test_issue_7840():
     # daveknippers' example
-    C393 = sympify( \
-        'Piecewise((C391 - 1.65, C390 < 0.5), (Piecewise((C391 - 1.65, \
-        C391 > 2.35), (C392, True)), True))'
-    )
-    C391 = sympify( \
-        'Piecewise((2.05*C390**(-1.03), C390 < 0.5), (2.5*C390**(-0.625), True))'
-    )
+    C390, C391, C392 = symbols("C390, C391, C392")
+    C393 = Piecewise((C391 - 1.65, C390 < 0.5), (Piecewise((C391 - 1.65, \
+        C391 > 2.35), (C392, True)), True))
+    C391 = Piecewise((2.05*C390**(-1.03), C390 < 0.5), (2.5*C390**(-0.625), True))
     C393 = C393.subs('C391',C391)
     # simple substitution
     sub = {}
@@ -427,12 +424,10 @@ def test_issue_7840():
     assert ss_answer == cse_answer
 
     # GitRay's example
-    expr = sympify(
-        "Piecewise((Symbol('ON'), Equality(Symbol('mode'), Symbol('ON'))), \
+    expr = Piecewise((Symbol('ON'), Equality(Symbol('mode'), Symbol('ON'))), \
         (Piecewise((Piecewise((Symbol('OFF'), StrictLessThan(Symbol('x'), \
-        Symbol('threshold'))), (Symbol('ON'), true)), Equality(Symbol('mode'), \
-        Symbol('AUTO'))), (Symbol('OFF'), true)), true))"
-    )
+        Symbol('threshold'))), (Symbol('ON'), True)), Equality(Symbol('mode'), \
+        Symbol('AUTO'))), (Symbol('OFF'), True)), True))
     substitutions, new_eqn = cse(expr)
     # this Piecewise should be exactly the same
     assert new_eqn[0] == expr
