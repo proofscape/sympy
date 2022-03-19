@@ -271,6 +271,7 @@ from sympy.core.expr import (
 )
 from sympy.core.numbers import Float, Integer, Number, Rational
 from sympy.core.relational import Equality
+from sympy.core.singleton import SingletonRegistry
 from sympy.core.symbol import Symbol
 
 from sympy.functions.combinatorial.factorials import factorial, factorial2
@@ -282,7 +283,9 @@ from sympy.functions.elementary.hyperbolic import (
     acosh, acoth, acsch, asech, asinh, atanh,
     cosh, coth, csch, sech, sinh, tanh,
 )
-from sympy.functions.elementary.miscellaneous import sqrt, cbrt
+from sympy.functions.elementary.miscellaneous import (
+    cbrt, sqrt, Max, Min,
+)
 from sympy.functions.elementary.trigonometric import (
     acos, acot, acsc, asec, asin, atan, atan2,
     cos, cot, csc, sec, sin, tan,
@@ -315,16 +318,17 @@ sympy_unit_tests_callables = [
 
     c(Q.even, Expr),
 
-    c(Add, t(Expr), evaluate=bool),
-    c(Mul, t(Expr), evaluate=bool),
+    c(Add, t(iExpr), evaluate=bool),
+    c(Mul, t(iExpr), evaluate=bool),
     c(Pow, iExpr, iExpr, evaluate=bool),
 
-    c(Float, a(fiExpr, s.NUMBER)),
+    c(Float, a(fiExpr, s.NUMBER), precision=Int),
     c(Integer, a(iExpr, s.NUMBER)),
     c(Number, a(fiExpr, s.NUMBER)),
     c(Rational, a(fiExpr, s.NUMBER), t(iExpr)),
 
     c(Equality, Expr, Expr),
+    c(SingletonRegistry, fiExpr),
     c(Symbol, s.UWORD),
 
     c(factorial, Expr),
@@ -338,7 +342,7 @@ sympy_unit_tests_callables = [
     c(sign, Expr, evaluate=bool),
 
     c(exp, Expr, evaluate=bool),
-    c(log, Expr, evaluate=bool),
+    c(log, Expr, t(Expr), evaluate=bool),
 
     c(cosh, Expr, evaluate=bool),
     c(coth, Expr, evaluate=bool),
@@ -355,6 +359,9 @@ sympy_unit_tests_callables = [
 
     c(sqrt, Expr, evaluate=bool),
     c(cbrt, Expr, evaluate=bool),
+
+    c(Max, t(Expr)),
+    c(Min, t(Expr)),
 
     c(cos, Expr, evaluate=bool),
     c(cot, Expr, evaluate=bool),
