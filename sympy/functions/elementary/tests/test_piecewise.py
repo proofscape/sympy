@@ -836,12 +836,6 @@ def test_as_expr_set_pairs():
         [((x - 2)**2, Interval(0, oo)), (0, Interval(-oo, 0, True, True))]
 
 
-def test_S_srepr_is_identity():
-    p = Piecewise((10, Eq(x, 0)), (12, True))
-    q = S(srepr(p))
-    assert p == q
-
-
 def test_issue_12587():
     # sort holes into intervals
     p = Piecewise((1, x > 4), (2, Not((x <= 3) & (x > -1))), (3, True))

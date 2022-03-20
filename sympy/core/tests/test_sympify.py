@@ -258,14 +258,6 @@ def test_issue_3595():
     assert sympify("_a") == Symbol("_a")
 
 
-def test_lambda():
-    x = Symbol('x')
-    assert sympify('lambda: 1') == Lambda((), 1)
-    assert sympify('lambda x: x') == Lambda(x, x)
-    assert sympify('lambda x: 2*x') == Lambda(x, 2*x)
-    assert sympify('lambda x, y: 2*x+y') == Lambda((x, y), 2*x + y)
-
-
 def test_lambda_raises():
     raises(SympifyError, lambda: sympify("lambda *args: args")) # args argument error
     raises(SympifyError, lambda: sympify("lambda **kwargs: kwargs[0]")) # kwargs argument error
@@ -434,7 +426,6 @@ def test_evaluate_false():
         '2 - 3 * 5': Add(2, Mul(-1, Mul(3, 5,evaluate=False), evaluate=False), evaluate=False),
         '1 / 3': Mul(1, Pow(3, -1, evaluate=False), evaluate=False),
         'True | False': Or(True, False, evaluate=False),
-        '1 + 2 + 3 + 5*3 + integrate(x)': Add(1, 2, 3, Mul(5, 3, evaluate=False), x**2/2, evaluate=False),
         '2 * 4 * 6 + 8': Add(Mul(2, 4, 6, evaluate=False), 8, evaluate=False),
         '2 - 8 / 4': Add(2, Mul(-1, Mul(8, Pow(4, -1, evaluate=False), evaluate=False), evaluate=False), evaluate=False),
         '2 - 2**2': Add(2, Mul(-1, Pow(2, 2, evaluate=False), evaluate=False), evaluate=False),
@@ -527,7 +518,6 @@ def test_issue_6540_6552():
     assert S('[[1/3,2], (2/5,)]') == [[Rational(1, 3), 2], (Rational(2, 5),)]
     assert S('[[2/6,2], (2/4,)]') == [[Rational(1, 3), 2], (S.Half,)]
     assert S('[[[2*(1)]]]') == [[[2]]]
-    assert S('Matrix([2*(1)])') == Matrix([2])
 
 
 def test_issue_6046():
