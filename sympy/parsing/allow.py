@@ -166,14 +166,60 @@ class Tail:
         return -1
 
 
+class CheckedArgs:
+    """
+    Represents the result of checking a given pair (A0, K0) of positional and
+    keyword args against a Signature.
+
+    An instance of this class will contain a pair (A1, K1)
+    of args that are okay to be passed on to the callable in question. Only
+    these args, not the given ones, must be passed onward. This is because
+    the given (A0, K0) may contain keyword args passed positionally, and we
+    must be sure that these go to the right arg. There could be a difference
+    because `AllowedCallable`s are sometimes a work-in-progress, in which not
+    every keyword arg yet has a typedef.
+
+    Example:
+
+    Consider a function,
+
+        def foo(bar, spam=None, baz=None):
+            ...
+
+    and suppose the AllowedCallable that has been defined is a work in progress,
+
+        ac = AllowedCallable(foo, [int], {baz=StrPermType.ANY})
+
+    in which the developer has not yet made the arg spec for the `spam` kwarg.
+    Note: In such a case, the developer _should_ have set `kwargs_complete=False`
+    (see `AllowedCallable.__init__()`), to disallow positionally passed kwargs.
+
+    When we then check the function call
+
+        foo(1, 'lorem.ipsum[0]')
+
+    against `ac`, we will approve the string 'lorem.ipsum[0]' for use with
+    kwarg `baz`. However, if we just forwarded the args to `foo` as they are,
+    then kwarg `spam` would receive this string. This could be a security
+    vulnerability.
+    """
+
+    def __init__(self, signature, checked_pos_args, checked_kwargs):
+        self.signature = signature
+        self.A = checked_pos_args
+        self.K = checked_kwargs
+
+
 class Signature:
     """
     Represents a single accepted function signature, including arg specs for
     both positional and keyword arguments.
     """
 
-    def __init__(self, allowed_callable, pos_arg_specs, kwarg_specs):
+    def __init__(self, allowed_callable, pos_arg_specs, kwarg_specs, kwargs_complete):
         self.ac = allowed_callable
+        self.kwargs_complete = kwargs_complete
+
         pos_arg_specs = [ArgSpec.convert(s) for s in pos_arg_specs]
         self.req_arg_specs = []
         self.tail = None
@@ -186,6 +232,7 @@ class Signature:
         self.num_req_args = len(self.req_arg_specs)
 
         self.kwarg_specs = {k: ArgSpec.convert(v) for k, v in kwarg_specs.items()}
+        self.num_kwargs = len(self.kwarg_specs)
 
     def write_arg_err_msg(self, arg_spec, pos=None, kw=None):
         if pos is not None:
@@ -202,42 +249,57 @@ class Signature:
 
         @param A: list of positional args
         @param K: dict of keyword args
-        @return: True iff pass all checks.
+        @raises: BadArgs if any arguments violate type permissions
+        @return: CheckedArgs instance, in which there are no ambiguities,
+            namely, keyword args are passed only as such, never positionally.
         """
         N = len(A)
         n = self.num_req_args
+        allow_positional_kwargs = self.kwargs_complete
 
         if N < n:
             raise BadArgs(f'Missing positional args to function `{self.ac.full_name}`.')
 
-        A_tail = None
-        if N > n:
-            if self.tail is None:
-                raise BadArgs(f'Too many positional args to function `{self.ac.full_name}`.')
-            A, A_tail = A[:n], A[n:]
+        A0, A_tail = A[:n], A[n:]
 
-        for i, (a, spec) in enumerate(zip(A, self.req_arg_specs)):
+        for i, (a, spec) in enumerate(zip(A0, self.req_arg_specs)):
             if not spec.ok(a):
                 raise BadArgs(self.write_arg_err_msg(spec, pos=i))
 
-        if A_tail:
-            i = self.tail.first_failing_index(A_tail)
-            if i >= 0:
-                raise BadArgs(self.write_arg_err_msg(self.tail.spec, pos=i))
+        A1, K1 = A, K
 
-        for k, v in K.items():
+        if A_tail:
+            if self.tail:
+                i = self.tail.first_failing_index(A_tail)
+                if i >= 0:
+                    raise BadArgs(self.write_arg_err_msg(self.tail.spec, pos=i))
+            elif allow_positional_kwargs:
+                if len(A_tail) > self.num_kwargs:
+                    raise BadArgs(f'Too many positional args to function `{self.ac.full_name}`.')
+                A1 = A0
+                K1 = {k: a for k, a in zip(self.kwarg_specs.keys(), A_tail)}
+                for k, v in K.items():
+                    if k in K1:
+                        raise BadArgs(f'{self.ac.full_name} got multiple values for argument {k}')
+                    else:
+                        K1[k] = v
+            else:
+                raise BadArgs(f'Positional kwargs are not allowed for {self.ac.full_name}')
+
+        for k, v in K1.items():
             spec = self.kwarg_specs.get(k)
             if spec is None:
                 raise BadArgs(f'No arg spec for keyword arg `{k}` to function `{self.ac.full_name}`.')
             if not spec.ok(v):
                 raise BadArgs(self.write_arg_err_msg(spec, kw=k))
-        return True
+
+        return CheckedArgs(self, A1, K1)
 
 
 class AllowedCallable:
 
     def __init__(self, callable, pos_arg_specs, kwarg_specs=None,
-                 name=None, self_type=None):
+                 name=None, self_type=None, kwargs_complete=True):
         """
         @param callable: the callable itself, which we represent.
 
@@ -283,8 +345,21 @@ class AllowedCallable:
             `pos_arg_specs`. May be an actual `ArgSpec` instance, or anything
             convertible thereto. May be a list of alternatives of equal length
             to `pos_arg_specs` when that is a list of lists.
+
+        @param kwargs_complete: If False, we will not allow kwargs to be passed
+            positionally. This is meant to support gradual development, so that
+            a developer can define an AllowedCallable in which some, but not yet
+            all, of the kwargs have type definitions. If True (the default), then
+            kwargs passed positionally will be mapped to kwargs in the order
+            defined in `kwarg_specs`.
+
+            Note: If the kwarg specs are incomplete, but the developer forgets
+            to set `kwargs_complete` to False, it will lead to unexpected
+            behavior, but not dangerous behavior, thanks to the use of
+            `CheckedArgs`. See docstring for that class for more.
         """
         self.callable = callable
+        self.kwargs_complete = kwargs_complete
 
         qualname = getattr(callable, '__qualname__', None)
         self_type_given = ((isinstance(self_type, list) and len(self_type) > 0) or self_type is not None)
@@ -335,7 +410,7 @@ class AllowedCallable:
         prev_k = {}
         for p, k0 in zip(P, K):
             k1 = {**prev_k, **k0}
-            self.alternatives.append(Signature(self, p, k1))
+            self.alternatives.append(Signature(self, p, k1, kwargs_complete))
             prev_k = k1
 
     @property
@@ -356,10 +431,9 @@ class AllowedCallable:
         signature was satisfied.
         """
         result = self.check_args(args, kwargs)
-        if isinstance(result, Signature):
-            # Double check
-            if result.check_args(args, kwargs):
-                return self.callable(*args, **kwargs)
+        if isinstance(result, CheckedArgs):
+            A1, K1 = result.A, result.K
+            return self.callable(*A1, **K1)
         raise CannotCall(result)
 
     def check_args(self, A, K):
@@ -369,17 +443,17 @@ class AllowedCallable:
 
         @param A: list of positional args
         @param K: dict of keyword args
-        @return: the first Signature that was satisfied, or else a list of the
-            BadArgs exceptions raised by each of the signatures.
+        @return: the CheckedArgs for the first Signature that was satisfied, or
+            else a list of the BadArgs exceptions raised by each of the Signatures.
         """
         badArgExceps = []
         for sig in self.alternatives:
             try:
-                sig.check_args(A, K)
+                checked_args = sig.check_args(A, K)
             except BadArgs as ba:
                 badArgExceps.append(ba)
             else:
-                return sig
+                return checked_args
         return badArgExceps
 
 

@@ -9,7 +9,7 @@ from sympy.core.relational import Relational
 from sympy.core.sympify import SympifyError
 
 from sympy.parsing.allow import (
-    sympy_unit_tests_c2ac, ParsingExcep
+    sympy_unit_tests_c2ac, ParsingExcep, CheckedArgs
 )
 
 
@@ -157,10 +157,10 @@ class ControlledEvaluator(ast.NodeTransformer):
                     if ac is None:
                         allow = '<unknown>'
                     else:
-                        try:
-                            if ac.check_args(A, K):
-                                allow = '<ok>.<whitelist>'
-                        except ParsingExcep as e:
+                        result = ac.check_args(A, K)
+                        if isinstance(result, CheckedArgs):
+                            allow = '<ok>.<whitelist>'
+                        else:
                             allow = '<fail>:' + str(e)
 
                 info = {
