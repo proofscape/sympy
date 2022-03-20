@@ -33,6 +33,8 @@ class StrPermType:
     UWORD_CDL = "UWORD_CDL"
     # Any numeric literal (int or float)
     NUMBER = "NUMBER"
+    # + or -
+    SIGN = "SIGN"
 
 
 def string_is_permitted(s, perm_type):
@@ -61,6 +63,8 @@ def string_is_permitted(s, perm_type):
         return all(UNICODE_WORD.match(p) for p in parts)
     if perm_type == StrPermType.NUMBER:
         return s and NUMBER_PATTERN.match(s)
+    if perm_type == StrPermType.SIGN:
+        return s in ["+", "-"]
     return False
 
 
@@ -262,20 +266,24 @@ class NamedAllowedCallable(AllowedCallable):
         return self._name
 
 
-from typing import List, Tuple, Optional as o, Union as u
+from typing import List, Tuple, Dict, Sequence, Optional as o, Union as u
 
 from sympy.assumptions import Q
 
+from sympy.core.basic import Basic
 from sympy.core.expr import (
     Add, Expr, Mul, Pow,
 )
 from sympy.core.function import UndefinedFunction
+from sympy.core.mod import Mod
 from sympy.core.numbers import Float, Integer, Number, Rational
 from sympy.core.relational import Equality, Relational
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
 
-from sympy.functions.combinatorial.factorials import factorial, factorial2
+from sympy.functions.combinatorial.factorials import (
+    factorial, factorial2, RisingFactorial,
+)
 from sympy.functions.elementary.complexes import (
     Abs, arg, conjugate, im, re, sign,
 )
@@ -301,7 +309,17 @@ from sympy.functions.special.error_functions import (
     Ci, Ei, Si, li,
 )
 
+from sympy.logic.boolalg import Boolean, Or
+
 from sympy.ntheory.factor_ import factorint
+from sympy.ntheory.generate import prime, primepi
+from sympy.ntheory.primetest import isprime
+
+from sympy.polys.polytools import cancel, factor
+
+from sympy.series.limits import Limit, limit
+
+from sympy.sets.sets import Interval
 
 
 c = AllowedCallable
@@ -310,6 +328,7 @@ s = StrPermType
 a = ArgSpec
 t = Tail
 
+Bool = u[Boolean, bool]
 Int = u[Integer, int]
 iExpr = u[Expr, int]
 fiExpr = u[Expr, float, int]
@@ -326,7 +345,14 @@ sympy_unit_tests_callables = [
     c(Mul, t(iExpr), evaluate=bool),
     c(Pow, iExpr, iExpr, evaluate=bool),
 
+    c(Expr.is_polynomial, t(Symbol)),
+    c(Basic.subs,
+      u[Expr, Dict[Expr, Expr], Sequence[Tuple[Expr, Expr]]],
+      t(Expr), simultaneous=bool),
+
     c(UndefinedFunction, s.UWORD),
+
+    c(Mod, iExpr, iExpr),
 
     c(Float, a(fiExpr, s.NUMBER), precision=Int),
     c(Integer, a(iExpr, s.NUMBER)),
@@ -339,6 +365,7 @@ sympy_unit_tests_callables = [
 
     c(factorial, Expr),
     c(factorial2, Expr),
+    c(RisingFactorial, Expr, Expr),
 
     c(Abs, Expr, evaluate=bool),
     c(arg, Expr, evaluate=bool),
@@ -397,7 +424,23 @@ sympy_unit_tests_callables = [
     c(Si, Expr),
     c(li, Expr),
 
+    c(Or, t(Bool), evaluate=bool),
+
     c(factorint, Int, visual=bool),
+    c(prime, Int),
+    c(primepi, Int),
+    c(isprime, Int),
+
+    c(cancel, Expr, t(Symbol)),
+    c(factor, Expr, t(Symbol)),
+
+    c(Limit, Expr, Symbol, Expr, dir=s.SIGN),
+    c(limit, Expr, Symbol, Expr, dir=s.SIGN),
+
+    c(Interval, Expr, Expr),
+    c(Interval.Lopen, Expr, Expr),
+    c(Interval.Ropen, Expr, Expr),
+    c(Interval.open, Expr, Expr),
 ]
 
 sympy_unit_tests_c2ac = {ac.callable: ac for ac in sympy_unit_tests_callables}
