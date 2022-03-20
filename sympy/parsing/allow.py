@@ -465,7 +465,7 @@ from sympy.core.basic import Basic
 from sympy.core.expr import (
     Add, Expr, Mul, Pow,
 )
-from sympy.core.function import UndefinedFunction
+from sympy.core.function import diff, UndefinedFunction
 from sympy.core.mod import Mod
 from sympy.core.numbers import Float, Integer, Number, Rational
 from sympy.core.relational import Equality, Relational
@@ -543,6 +543,8 @@ sympy_unit_tests_callables = [
     ], {'simultaneous': bool}, self_type=Basic),
 
     c(UndefinedFunction, [s.UWORD]),
+
+    c(diff, [Expr, t(Symbol)]),
 
     c(Mod, [iExpr, iExpr]),
 
