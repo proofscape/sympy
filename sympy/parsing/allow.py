@@ -10,7 +10,22 @@ class ParsingExcep(Exception):
 
 
 class BadArgs(ParsingExcep):
+    """
+    Represents a failure of given positional and keyword args to match an
+    expected (alternative) signature for an AllowedCallable.
+    """
     ...
+
+
+class CannotCall(ParsingExcep):
+    """
+    Represents a failure to call an AllowedCallable `ac`.
+    Stores a list of `BadArgs` exceptions, one for each alternative signature
+    of `ac`.
+    """
+
+    def __init__(self, badArgsExceps):
+        self.badArgsExceps = badArgsExceps
 
 
 CNAME_PATTERN = re.compile(r'[_a-zA-Z]\w*$')
@@ -151,21 +166,14 @@ class Tail:
         return -1
 
 
-class AllowedCallable:
+class Signature:
+    """
+    Represents a single accepted function signature, including arg specs for
+    both positional and keyword arguments.
+    """
 
-    def __init__(self, callable, *pos_arg_specs, **kwarg_specs):
-        """
-        @param callable: the callable itself, which we represent.
-        @param pos_arg_specs: one arg spec for each positional arg the callable
-            accepts. Each spec can be an actual `ArgSpec` instance, or anything
-            convertible thereto. The last spec can be a `Tail` instance.
-        @param kwarg_specs: up to one arg spec for each keyword arg the callable
-            accepts. Omitting the spec for a keyword arg means we have not
-            allowed anything to be passed for that arg. Each spec can be an
-            actual `ArgSpec` instance, or anything convertible thereto.
-        """
-        self.callable = callable
-
+    def __init__(self, allowed_callable, pos_arg_specs, kwarg_specs):
+        self.ac = allowed_callable
         pos_arg_specs = [ArgSpec.convert(s) for s in pos_arg_specs]
         self.req_arg_specs = []
         self.tail = None
@@ -179,41 +187,18 @@ class AllowedCallable:
 
         self.kwarg_specs = {k: ArgSpec.convert(v) for k, v in kwarg_specs.items()}
 
-    @property
-    def name(self):
-        name = getattr(self.callable, '__name__', None)
-        if not name:
-            raise ParsingExcep(f'Callable {self.callable} has no name.')
-        return name
-
-    @property
-    def full_name(self):
-        module = getattr(self.callable, '__module__', None)
-        if not module:
-            raise ParsingExcep(f'Callable {self.callable} has no module.')
-        return f'{module}.{self.name}'
-
-    def write_permission_err_msg(self, arg_spec, pos=None, kw=None):
+    def write_arg_err_msg(self, arg_spec, pos=None, kw=None):
         if pos is not None:
             msg = f'For positional arg {pos}'
         else:
             msg = f'For keyword arg "{kw}"'
-        msg += f' of the `{self.full_name}` function, arg spec is: {arg_spec}.'
+        msg += f' of the `{self.ac.full_name}` function, arg spec is: {arg_spec}.'
         return msg
-
-    def __call__(self, *args, **kwargs):
-        """
-        Call our callable and return the result, but only if the args and kwargs
-        pass all checks. Raise `BadArgs` if any check fails.
-        """
-        if self.check_args(args, kwargs):
-            return self.callable(*args, **kwargs)
 
     def check_args(self, A, K):
         """
         Check the given arguments for any violation of the type permissions
-        for this callable. If there is any violotion, a ParsingExcep (possibly
-        BadArgs) is raised.
+        for this signature. If there is any violotion, a BadArgs is raised.
 
         @param A: list of positional args
         @param K: dict of keyword args
@@ -223,47 +208,179 @@ class AllowedCallable:
         n = self.num_req_args
 
         if N < n:
-            raise BadArgs(f'Missing positional args to function `{self.full_name}`.')
+            raise BadArgs(f'Missing positional args to function `{self.ac.full_name}`.')
 
         A_tail = None
         if N > n:
             if self.tail is None:
-                raise BadArgs(f'Too many positional args to function `{self.full_name}`.')
+                raise BadArgs(f'Too many positional args to function `{self.ac.full_name}`.')
             A, A_tail = A[:n], A[n:]
 
         for i, (a, spec) in enumerate(zip(A, self.req_arg_specs)):
             if not spec.ok(a):
-                raise BadArgs(self.write_permission_err_msg(spec, pos=i))
+                raise BadArgs(self.write_arg_err_msg(spec, pos=i))
 
         if A_tail:
             i = self.tail.first_failing_index(A_tail)
             if i >= 0:
-                raise BadArgs(self.write_permission_err_msg(self.tail.spec, pos=i))
+                raise BadArgs(self.write_arg_err_msg(self.tail.spec, pos=i))
 
         for k, v in K.items():
             spec = self.kwarg_specs.get(k)
             if spec is None:
-                raise ParsingExcep(f'No arg spec for keyword arg `{k}` to function `{self.full_name}`.')
+                raise BadArgs(f'No arg spec for keyword arg `{k}` to function `{self.ac.full_name}`.')
             if not spec.ok(v):
-                raise BadArgs(self.write_permission_err_msg(spec, kw=k))
+                raise BadArgs(self.write_arg_err_msg(spec, kw=k))
         return True
 
 
-class NamedAllowedCallable(AllowedCallable):
-    """
-    An AllowedCallable where we need to override the name.
+class AllowedCallable:
 
-    Example: For the SymPy `Matrix` class, `Matrix.__name__` returns
-    the name "MutableDenseMatrix", instead of the name "Matrix" that we want.
-    """
+    def __init__(self, callable, pos_arg_specs, kwarg_specs=None,
+                 name=None, self_type=None):
+        """
+        @param callable: the callable itself, which we represent.
 
-    def __init__(self, callable, name, *pos_arg_specs, **kwarg_specs):
-        super().__init__(callable, *pos_arg_specs, **kwarg_specs)
-        self._name = name
+        @param pos_arg_specs: In the "basic" case, this is a list of arg specs,
+            one for each positional arg the callable accepts. Each spec can be
+            an actual `ArgSpec` instance, or anything convertible thereto (by
+            the `ArgSpec.convert()` class method). The last spec can be a
+            `Tail` instance.
+
+            In the "advanced" case, this can be a list of such lists, as a way
+            of specifying alternative function signatures. For example, maybe
+            the function either accepts two ints, or one float.
+
+        @param kwarg_specs: In the "basic" case, this is a dictionary of arg
+            specs, one for each keyword arg the callable accepts. Omitting the
+            spec for a keyword arg means we have not allowed anything to be
+            passed for that arg. Each spec can be an actual `ArgSpec` instance,
+            or anything convertible thereto. In the "advanced" case, this can
+            be a list of such dictionaries.
+
+            If `pos_arg_specs` is a list of lists, but `kwarg_specs` is a single
+            dictionary, then these are the kwarg specs for every alternative
+            list of positional arg specs. If `kwarg_specs` is also a list then
+            dictionaries after the first inherit from the previous one and
+            override only those entries they define. If the list of dicts is
+            shorter than `pos_arg_specs`, empty dicts are inserted at the end
+            to make it the same length.
+
+        @param name: If `None`, the name of the callable will be automatically
+            determined from its `__qualname__` attribute. If a string, this
+            name will be used instead. Example: For the SymPy `Matrix` class,
+            `Matrix.__qualname__` returns the name "MutableDenseMatrix", instead
+            of the name "Matrix" that we probably want.
+
+            If `callable.__qualname__` is undefined (example: the SymPy `S`
+            object), then you must supply a name here.
+
+            The intention is that this name be usable as the name of this callable
+            when parsing Python code where this callable should be available.
+
+        @param self_type: When the callable is a class method, you must provide
+            the arg spec for the first (i.e. `self`) argument here, and not in
+            `pos_arg_specs`. May be an actual `ArgSpec` instance, or anything
+            convertible thereto. May be a list of alternatives of equal length
+            to `pos_arg_specs` when that is a list of lists.
+        """
+        self.callable = callable
+
+        qualname = getattr(callable, '__qualname__', None)
+        self_type_given = ((isinstance(self_type, list) and len(self_type) > 0) or self_type is not None)
+
+        if qualname is None:
+            if not name:
+                raise ValueError('Callable has no __qualname__. Must supply a name.')
+        else:
+            dotted = (qualname.find('.') >= 0)
+            if dotted and not self_type_given:
+                raise ValueError(
+                    'Callable does not appear to be a top-level function or class.'
+                    ' For class methods, you must supply a `self_type` arg spec.'
+                )
+            if self_type_given and not dotted:
+                raise ValueError(
+                    'Callable appears to be a top-level function or class.'
+                    ' You should not supply a `self_type` arg spec.'
+                )
+
+        self._name = name or qualname
+
+        P, K = pos_arg_specs, (kwarg_specs or {})
+        if not isinstance(P, list):
+            raise ValueError('pos_arg_specs must be a list')
+        if len(P) == 0 or not isinstance(P[0], list):
+            P = [P]
+
+        if self_type_given:
+            S = [self_type] if not isinstance(self_type, list) else self_type
+            d = len(P) - len(S)
+            while d > 0:
+                S.append(S[-1])
+                d -= 1
+            P1 = []
+            for s, p in zip(S, P):
+                P1.append([s] + p)
+            P = P1
+
+        if isinstance(K, dict):
+            K = [K]
+        d = len(P) - len(K)
+        while d > 0:
+            K.append({})
+            d -= 1
+
+        self.alternatives = []
+        prev_k = {}
+        for p, k0 in zip(P, K):
+            k1 = {**prev_k, **k0}
+            self.alternatives.append(Signature(self, p, k1))
+            prev_k = k1
 
     @property
     def name(self):
         return self._name
+
+    @property
+    def full_name(self):
+        module = getattr(self.callable, '__module__', None)
+        if not module:
+            raise ParsingExcep(f'Callable {self.callable} has no module.')
+        return f'{module}.{self.name}'
+
+    def __call__(self, *args, **kwargs):
+        """
+        Call our callable and return the result, but only if the args and kwargs
+        satisfied one of our alternative signatures. Raise `CannotCall` if no
+        signature was satisfied.
+        """
+        result = self.check_args(args, kwargs)
+        if isinstance(result, Signature):
+            # Double check
+            if result.check_args(args, kwargs):
+                return self.callable(*args, **kwargs)
+        raise CannotCall(result)
+
+    def check_args(self, A, K):
+        """
+        Check the given arguments to see if they satisfy any of the alternative
+        signautres allowed for this callable.
+
+        @param A: list of positional args
+        @param K: dict of keyword args
+        @return: the first Signature that was satisfied, or else a list of the
+            BadArgs exceptions raised by each of the signatures.
+        """
+        badArgExceps = []
+        for sig in self.alternatives:
+            try:
+                sig.check_args(A, K)
+            except BadArgs as ba:
+                badArgExceps.append(ba)
+            else:
+                return sig
+        return badArgExceps
 
 
 from typing import List, Tuple, Dict, Sequence, Optional as o, Union as u
@@ -279,7 +396,7 @@ from sympy.core.mod import Mod
 from sympy.core.numbers import Float, Integer, Number, Rational
 from sympy.core.relational import Equality, Relational
 from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
+from sympy.core.symbol import Symbol, symbols
 
 from sympy.functions.combinatorial.factorials import (
     factorial, factorial2, RisingFactorial,
@@ -323,7 +440,6 @@ from sympy.sets.sets import Interval
 
 
 c = AllowedCallable
-nc = NamedAllowedCallable
 s = StrPermType
 a = ArgSpec
 t = Tail
@@ -331,116 +447,129 @@ t = Tail
 Bool = u[Boolean, bool]
 Int = u[Integer, int]
 iExpr = u[Expr, int]
+fExpr = u[Expr, float]
 fiExpr = u[Expr, float, int]
 
 # This is meant to be a minimal list of allowed callables, just sufficient to
 # allow the entire suite of SymPy unit tests to pass.
 sympy_unit_tests_callables = [
-    c(abs, Expr),
-    c(pow, Expr, Expr, t(Int)),
+    c(abs, [Expr]),
+    c(pow, [Expr, Expr, t(Int)]),
 
-    c(Q.even, Expr),
+    c(Q.even, [Expr], name='EvenPredicate'),
 
-    c(Add, t(iExpr), evaluate=bool),
-    c(Mul, t(iExpr), evaluate=bool),
-    c(Pow, iExpr, iExpr, evaluate=bool),
+    c(Add, [t(iExpr)], {'evaluate': bool}),
+    c(Mul, [t(iExpr)], {'evaluate': bool}),
+    c(Pow, [iExpr, iExpr], {'evaluate': bool}),
 
-    c(Expr.is_polynomial, t(Symbol)),
-    c(Basic.subs,
-      u[Expr, Dict[Expr, Expr], Sequence[Tuple[Expr, Expr]]],
-      t(Expr), simultaneous=bool),
+    c(Expr.is_polynomial, [t(Symbol)], self_type=Expr),
+    c(Basic.subs, [
+        [Expr, Expr],
+        [u[Dict[Expr, Expr], Sequence[Tuple[Expr, Expr]]]],
+    ], {'simultaneous': bool}, self_type=Basic),
 
-    c(UndefinedFunction, s.UWORD),
+    c(UndefinedFunction, [s.UWORD]),
 
-    c(Mod, iExpr, iExpr),
+    c(Mod, [iExpr, iExpr]),
 
-    c(Float, a(fiExpr, s.NUMBER), precision=Int),
-    c(Integer, a(iExpr, s.NUMBER)),
-    c(Number, a(fiExpr, s.NUMBER)),
-    c(Rational, a(fiExpr, s.NUMBER), t(iExpr)),
+    c(Float, [a(fiExpr, s.NUMBER)], {'precision': Int}),
+    c(Integer, [a(iExpr, s.NUMBER)]),
+    c(Number, [a(fiExpr, s.NUMBER)]),
+    c(Rational, [
+        [iExpr, iExpr],
+        [fExpr],
+        [s.NUMBER],
+    ]),
 
-    c(Equality, Expr, Expr),
-    c(S, fiExpr),
-    c(Symbol, s.UWORD),
+    c(Equality, [
+        [Expr, Expr],
+        [Bool, Bool],
+    ]),
+    c(S, [fiExpr], name="S"),
+    c(Symbol, [s.UWORD]),
+    c(symbols, [s.UWORD_CDL]),
 
-    c(factorial, Expr),
-    c(factorial2, Expr),
-    c(RisingFactorial, Expr, Expr),
+    c(factorial, [Expr]),
+    c(factorial2, [Expr]),
+    c(RisingFactorial, [Expr, Expr]),
 
-    c(Abs, Expr, evaluate=bool),
-    c(arg, Expr, evaluate=bool),
-    c(conjugate, Expr, evaluate=bool),
-    c(im, Expr, evaluate=bool),
-    c(re, Expr, evaluate=bool),
-    c(sign, Expr, evaluate=bool),
+    c(Abs, [Expr], {'evaluate': bool}),
+    c(arg, [Expr], {'evaluate': bool}),
+    c(conjugate, [Expr], {'evaluate': bool}),
+    c(im, [Expr], {'evaluate': bool}),
+    c(re, [Expr], {'evaluate': bool}),
+    c(sign, [Expr], {'evaluate': bool}),
 
-    c(exp, Expr, evaluate=bool),
-    c(log, Expr, t(Expr), evaluate=bool),
+    c(exp, [Expr], {'evaluate': bool}),
+    c(log, [
+        [Expr],
+        [Expr, Expr],
+    ], {'evaluate': bool}),
 
-    c(Piecewise, t(u[ExprCondPair, Tuple[Expr, Relational]])),
-    c(ExprCondPair, Expr, Relational),
+    c(Piecewise, [t(u[ExprCondPair, Tuple[Expr, Relational]])]),
+    c(ExprCondPair, [Expr, Relational]),
 
-    c(cosh, Expr, evaluate=bool),
-    c(coth, Expr, evaluate=bool),
-    c(csch, Expr, evaluate=bool),
-    c(sech, Expr, evaluate=bool),
-    c(sinh, Expr, evaluate=bool),
-    c(tanh, Expr, evaluate=bool),
-    c(acosh, Expr, evaluate=bool),
-    c(acoth, Expr, evaluate=bool),
-    c(acsch, Expr, evaluate=bool),
-    c(asech, Expr, evaluate=bool),
-    c(asinh, Expr, evaluate=bool),
-    c(atanh, Expr, evaluate=bool),
+    c(cosh, [Expr], {'evaluate': bool}),
+    c(coth, [Expr], {'evaluate': bool}),
+    c(csch, [Expr], {'evaluate': bool}),
+    c(sech, [Expr], {'evaluate': bool}),
+    c(sinh, [Expr], {'evaluate': bool}),
+    c(tanh, [Expr], {'evaluate': bool}),
+    c(acosh, [Expr], {'evaluate': bool}),
+    c(acoth, [Expr], {'evaluate': bool}),
+    c(acsch, [Expr], {'evaluate': bool}),
+    c(asech, [Expr], {'evaluate': bool}),
+    c(asinh, [Expr], {'evaluate': bool}),
+    c(atanh, [Expr], {'evaluate': bool}),
 
-    c(sqrt, Expr, evaluate=bool),
-    c(cbrt, Expr, evaluate=bool),
+    c(sqrt, [Expr], {'evaluate': bool}),
+    c(cbrt, [Expr], {'evaluate': bool}),
 
-    c(Max, t(Expr)),
-    c(Min, t(Expr)),
+    c(Max, [t(Expr)]),
+    c(Min, [t(Expr)]),
 
-    c(cos, Expr, evaluate=bool),
-    c(cot, Expr, evaluate=bool),
-    c(csc, Expr, evaluate=bool),
-    c(sec, Expr, evaluate=bool),
-    c(sin, Expr, evaluate=bool),
-    c(tan, Expr, evaluate=bool),
-    c(acos, Expr, evaluate=bool),
-    c(acot, Expr, evaluate=bool),
-    c(acsc, Expr, evaluate=bool),
-    c(asec, Expr, evaluate=bool),
-    c(asin, Expr, evaluate=bool),
-    c(atan, Expr, evaluate=bool),
-    c(atan2, Expr, Expr, evaluate=bool),
+    c(cos, [Expr], {'evaluate': bool}),
+    c(cot, [Expr], {'evaluate': bool}),
+    c(csc, [Expr], {'evaluate': bool}),
+    c(sec, [Expr], {'evaluate': bool}),
+    c(sin, [Expr], {'evaluate': bool}),
+    c(tan, [Expr], {'evaluate': bool}),
+    c(acos, [Expr], {'evaluate': bool}),
+    c(acot, [Expr], {'evaluate': bool}),
+    c(acsc, [Expr], {'evaluate': bool}),
+    c(asec, [Expr], {'evaluate': bool}),
+    c(asin, [Expr], {'evaluate': bool}),
+    c(atan, [Expr], {'evaluate': bool}),
+    c(atan2, [Expr, Expr], {'evaluate': bool}),
 
-    c(airyai, Expr),
-    c(airyaiprime, Expr),
-    c(airybi, Expr),
-    c(airybiprime, Expr),
-    c(besseli, Expr, Expr),
+    c(airyai, [Expr]),
+    c(airyaiprime, [Expr]),
+    c(airybi, [Expr]),
+    c(airybiprime, [Expr]),
+    c(besseli, [Expr, Expr]),
 
-    c(Ci, Expr),
-    c(Ei, Expr),
-    c(Si, Expr),
-    c(li, Expr),
+    c(Ci, [Expr]),
+    c(Ei, [Expr]),
+    c(Si, [Expr]),
+    c(li, [Expr]),
 
-    c(Or, t(Bool), evaluate=bool),
+    c(Or, [t(Bool)], {'evaluate': bool}),
 
-    c(factorint, Int, visual=bool),
-    c(prime, Int),
-    c(primepi, Int),
-    c(isprime, Int),
+    c(factorint, [Int], {'visual': bool}),
+    c(prime, [Int]),
+    c(primepi, [Int]),
+    c(isprime, [Int]),
 
-    c(cancel, Expr, t(Symbol)),
-    c(factor, Expr, t(Symbol)),
+    c(cancel, [Expr, t(Symbol)], {'_signsimp': bool}),
+    c(factor, [Expr, t(Symbol)], {'deep': bool}),
 
-    c(Limit, Expr, Symbol, Expr, dir=s.SIGN),
-    c(limit, Expr, Symbol, Expr, dir=s.SIGN),
+    c(Limit, [Expr, Symbol, Expr], {'dir': s.SIGN}),
+    c(limit, [Expr, Symbol, Expr], {'dir': s.SIGN}),
 
-    c(Interval, Expr, Expr),
-    c(Interval.Lopen, Expr, Expr),
-    c(Interval.Ropen, Expr, Expr),
-    c(Interval.open, Expr, Expr),
+    c(Interval, [Expr, Expr]),
+    c(Interval.Lopen, [Expr, Expr], self_type=Interval),
+    c(Interval.Ropen, [Expr, Expr], self_type=Interval),
+    c(Interval.open, [Expr, Expr], self_type=Interval),
 ]
 
 sympy_unit_tests_c2ac = {ac.callable: ac for ac in sympy_unit_tests_callables}
