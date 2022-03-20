@@ -1,6 +1,7 @@
 """Evaluation of Python ASTs, with controlled callables. """
 
 import ast
+import types
 
 from sympy.core.function import UndefinedFunction
 from sympy.core.numbers import Integer
@@ -113,6 +114,16 @@ class ControlledEvaluator(ast.NodeTransformer):
         F = node.func
         A = node.args or []
         K = {k: v for k, v in node.keywords}
+
+        # Unbind bound methods.
+        # This is so we can look for the underlying function in our list of allowed functions.
+        if type(F) == types.MethodType:
+            # Prepend the `self` arg to the list of args.
+            self_arg = F.__self__
+            A = [self_arg] + A
+            # Replace the bound method with the underlying function.
+            F = F.__func__
+
         mod = getattr(F, '__module__', None) or ''
         # FIXME:
         #  Instead of "whitelisting" every function in sympy (really a blacklist),
