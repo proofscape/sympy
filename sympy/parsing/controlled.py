@@ -138,7 +138,7 @@ class ControlledEvaluator(ast.NodeTransformer):
             import traceback, json
             with open('foo.txt', 'a') as f:
                 mod = getattr(F, "__module__", "<nomod>")
-                name = getattr(F, "__name__", "<noname>")
+                name = getattr(F, "__qualname__", "<noname>")
                 class_ = str(getattr(F, "__class__", "<noclass>"))
                 arg_types = [str(type(a)) for a in A]
                 kwarg_types = {k:str(type(v)) for k, v in K.items()}
