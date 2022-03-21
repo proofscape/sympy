@@ -27,6 +27,9 @@ class CannotCall(ParsingExcep):
     def __init__(self, badArgsExceps):
         self.badArgsExceps = badArgsExceps
 
+    def __str__(self):
+        return '\n'.join(str(e) for e in self.badArgsExceps)
+
 
 CNAME_PATTERN = re.compile(r'[_a-zA-Z]\w*$')
 UNICODE_WORD = re.compile(r'\w+$')

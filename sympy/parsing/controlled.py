@@ -161,7 +161,7 @@ class ControlledEvaluator(ast.NodeTransformer):
                         if isinstance(result, CheckedArgs):
                             allow = '<ok>.<whitelist>'
                         else:
-                            allow = '<fail>:' + str(e)
+                            allow = f'<fail>:{result}'
 
                 info = {
                     "mod": mod, "name": name, "class": class_,
