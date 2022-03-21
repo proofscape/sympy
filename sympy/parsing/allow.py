@@ -419,9 +419,7 @@ class AllowedCallable:
 
     @property
     def full_name(self):
-        module = getattr(self.callable, '__module__', None)
-        if not module:
-            raise ParsingExcep(f'Callable {self.callable} has no module.')
+        module = getattr(self.callable, '__module__', '<no_module>')
         return f'{module}.{self.name}'
 
     def __call__(self, *args, **kwargs):
