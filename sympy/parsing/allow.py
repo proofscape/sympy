@@ -460,7 +460,7 @@ class AllowedCallable:
     def __call__(self, *args, **kwargs):
         """
         Call our callable and return the result, but only if the args and kwargs
-        satisfied one of our alternative signatures. Raise `CannotCall` if no
+        satisfied one of our allowed signatures. Raise `CannotCall` if no
         signature was satisfied.
         """
         result = self.check_args(args, kwargs)
