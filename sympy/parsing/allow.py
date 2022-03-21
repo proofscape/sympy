@@ -313,7 +313,7 @@ class Signature:
 class AllowedCallable:
 
     def __init__(self, callable, pos_arg_specs, kwarg_specs=None,
-                 name=None, self_type=None, classmethod_for=None,
+                 name=None, method_of=None, classmethod_of=None,
                  kwargs_complete=True):
         """
         @param callable: the callable itself, which we represent.
@@ -355,13 +355,13 @@ class AllowedCallable:
             The intention is that this name be usable as the name of this callable
             when parsing Python code where this callable should be available.
 
-        @param self_type: When the callable is an instance method, you must provide
+        @param method_of: When the callable is an instance method, you must provide
             the arg spec for the first (i.e. `self`) argument here, and not in
             `pos_arg_specs`. May be an actual `ArgSpec` instance, or anything
             convertible thereto. May be a list of alternatives of equal length
             to `pos_arg_specs` when that is a list of lists.
 
-        @param classmethod_for: When the callable is a @classmethod, you must
+        @param classmethod_of: When the callable is a @classmethod, you must
             provide the class for the first (i.e. `cls`) argument here, and not
             in `pos_arg_specs`. Should simply be the class itself. May be a list
             of alternatives of equal length to `pos_arg_specs` when that is a
@@ -390,10 +390,9 @@ class AllowedCallable:
         self.kwargs_complete = kwargs_complete
 
         qualname = getattr(callable, '__qualname__', None)
-        self_type_given = ((isinstance(self_type, list) and len(self_type) > 0) or self_type is not None)
-        classmethod_for_given = ((isinstance(classmethod_for, list) and len(classmethod_for) > 0) or classmethod_for is not None)
-
-        lead_arg_given = self_type_given or classmethod_for_given
+        mo_given = ((isinstance(method_of, list) and len(method_of) > 0) or method_of is not None)
+        co_given = ((isinstance(classmethod_of, list) and len(classmethod_of) > 0) or classmethod_of is not None)
+        lead_arg_given = mo_given or co_given
 
         if qualname is None:
             if not name:
@@ -403,13 +402,13 @@ class AllowedCallable:
             if dotted and not lead_arg_given:
                 raise ValueError(
                     'Callable does not appear to be a top-level function or class.'
-                    ' If an instance- or class-method, you must supply a `self_type`'
-                    ' or `classmethod_for` arg spec, respectively.'
+                    ' If an instance- or class-method, you must define a `method_of`'
+                    ' or `classmethod_of`, respectively.'
                 )
             if lead_arg_given and not dotted:
                 raise ValueError(
                     'Callable appears to be a top-level function or class.'
-                    ' You should not supply a `self_type` or `classmethod_for` arg spec.'
+                    ' You should not define a `method_of` or `classmethod_of`.'
                 )
 
         self._name = name or qualname
@@ -421,18 +420,18 @@ class AllowedCallable:
             P = [P]
 
         if lead_arg_given:
-            if classmethod_for_given:
-                S = [classmethod_for] if not isinstance(classmethod_for, list) else classmethod_for
-                S = [ArgSpec(c=c) for c in S]
+            if co_given:
+                L = [classmethod_of] if not isinstance(classmethod_of, list) else classmethod_of
+                L = [ArgSpec(c=c) for c in L]
             else:
-                S = [self_type] if not isinstance(self_type, list) else self_type
-            d = len(P) - len(S)
+                L = [method_of] if not isinstance(method_of, list) else method_of
+            d = len(P) - len(L)
             while d > 0:
-                S.append(S[-1])
+                L.append(L[-1])
                 d -= 1
             P1 = []
-            for s, p in zip(S, P):
-                P1.append([s] + p)
+            for a, p in zip(L, P):
+                P1.append([a] + p)
             P = P1
 
         if isinstance(K, dict):
@@ -570,11 +569,11 @@ sympy_unit_tests_callables = [
     c(Mul, [t(iExpr)], {'evaluate': bool}),
     c(Pow, [iExpr, iExpr], {'evaluate': bool}),
 
-    c(Expr.is_polynomial, [t(Symbol)], self_type=Expr),
+    c(Expr.is_polynomial, [t(Symbol)], method_of=Expr),
     c(Basic.subs, [
         [Expr, Expr],
         [u[Dict[Expr, Expr], Sequence[Tuple[Expr, Expr]]]],
-    ], {'simultaneous': bool}, self_type=Basic),
+    ], {'simultaneous': bool}, method_of=Basic),
 
     c(UndefinedFunction, [s.UWORD]),
 
@@ -677,9 +676,9 @@ sympy_unit_tests_callables = [
     c(limit, [Expr, Symbol, Expr], {'dir': s.SIGN}),
 
     c(Interval, [Expr, Expr]),
-    c(Interval.Lopen, [Expr, Expr], classmethod_for=Interval),
-    c(Interval.Ropen, [Expr, Expr], classmethod_for=Interval),
-    c(Interval.open, [Expr, Expr], classmethod_for=Interval),
+    c(Interval.Lopen, [Expr, Expr], classmethod_of=Interval),
+    c(Interval.Ropen, [Expr, Expr], classmethod_of=Interval),
+    c(Interval.open, [Expr, Expr], classmethod_of=Interval),
 ]
 
 sympy_unit_tests_c2ac = {ac.callable: ac for ac in sympy_unit_tests_callables}
