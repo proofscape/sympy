@@ -1,6 +1,7 @@
 """Allowed callables, for safer parsing. """
 
 import re
+import types
 
 from typeguard import check_type
 
@@ -91,7 +92,7 @@ class ArgSpec:
     Define the allowed types for a single argument.
     """
 
-    def __init__(self, t=None, s=None):
+    def __init__(self, t=None, s=None, c=None):
         """
         @param t: a type that the argument is allowed to be.
 
@@ -107,16 +108,24 @@ class ArgSpec:
         @param s: StrPermType or None. If a StrPermType, then the
             argument is allowed to be a string iff it matches this
             type.
+
+        @param c: a class that the argument must _equal_. If given,
+            the `t` and `s` params are ignored. Useful for the first arg of
+            classmethods.
         """
         self.typehint = t
         self.strings = s
+        self.class_ = c
 
     def __str__(self):
         p = []
-        if self.typehint is not None:
-            p.append(str(self.typehint))
-        if self.strings is not None:
-            p.append(f'str: {self.strings}')
+        if self.class_ is not None:
+            p.append(f'=={self.class_}')
+        else:
+            if self.typehint is not None:
+                p.append(str(self.typehint))
+            if self.strings is not None:
+                p.append(f'str: {self.strings}')
         return ' or '.join(p)
 
     @classmethod
@@ -137,7 +146,9 @@ class ArgSpec:
         """
         Test whether a given arg matches the spec.
         """
-        if isinstance(arg, str):
+        if self.class_ is not None:
+            return arg == self.class_
+        elif isinstance(arg, str):
             if isinstance(self.strings, str):
                 # FIXME: use better test based on proper Enum class
                 return string_is_permitted(arg, self.strings)
@@ -302,7 +313,8 @@ class Signature:
 class AllowedCallable:
 
     def __init__(self, callable, pos_arg_specs, kwarg_specs=None,
-                 name=None, self_type=None, kwargs_complete=True):
+                 name=None, self_type=None, classmethod_for=None,
+                 kwargs_complete=True):
         """
         @param callable: the callable itself, which we represent.
 
@@ -343,11 +355,17 @@ class AllowedCallable:
             The intention is that this name be usable as the name of this callable
             when parsing Python code where this callable should be available.
 
-        @param self_type: When the callable is a class method, you must provide
+        @param self_type: When the callable is an instance method, you must provide
             the arg spec for the first (i.e. `self`) argument here, and not in
             `pos_arg_specs`. May be an actual `ArgSpec` instance, or anything
             convertible thereto. May be a list of alternatives of equal length
             to `pos_arg_specs` when that is a list of lists.
+
+        @param classmethod_for: When the callable is a @classmethod, you must
+            provide the class for the first (i.e. `cls`) argument here, and not
+            in `pos_arg_specs`. Should simply be the class itself. May be a list
+            of alternatives of equal length to `pos_arg_specs` when that is a
+            list of lists.
 
         @param kwargs_complete: If False, we will not allow kwargs to be passed
             positionally. This is meant to support gradual development, so that
@@ -361,26 +379,37 @@ class AllowedCallable:
             behavior, but not dangerous behavior, thanks to the use of
             `CheckedArgs`. See docstring for that class for more.
         """
+        # Replace bound methods with their underlying function.
+        # This seems to happen when `callable` is a `@classmethod`, but not
+        # when it's an ordinary instance method.
+        if type(callable) == types.MethodType:
+            callable = callable.__func__
+
         self.callable = callable
+
         self.kwargs_complete = kwargs_complete
 
         qualname = getattr(callable, '__qualname__', None)
         self_type_given = ((isinstance(self_type, list) and len(self_type) > 0) or self_type is not None)
+        classmethod_for_given = ((isinstance(classmethod_for, list) and len(classmethod_for) > 0) or classmethod_for is not None)
+
+        lead_arg_given = self_type_given or classmethod_for_given
 
         if qualname is None:
             if not name:
                 raise ValueError('Callable has no __qualname__. Must supply a name.')
         else:
             dotted = (qualname.find('.') >= 0)
-            if dotted and not self_type_given:
+            if dotted and not lead_arg_given:
                 raise ValueError(
                     'Callable does not appear to be a top-level function or class.'
-                    ' For class methods, you must supply a `self_type` arg spec.'
+                    ' If an instance- or class-method, you must supply a `self_type`'
+                    ' or `classmethod_for` arg spec, respectively.'
                 )
-            if self_type_given and not dotted:
+            if lead_arg_given and not dotted:
                 raise ValueError(
                     'Callable appears to be a top-level function or class.'
-                    ' You should not supply a `self_type` arg spec.'
+                    ' You should not supply a `self_type` or `classmethod_for` arg spec.'
                 )
 
         self._name = name or qualname
@@ -391,8 +420,12 @@ class AllowedCallable:
         if len(P) == 0 or not isinstance(P[0], list):
             P = [P]
 
-        if self_type_given:
-            S = [self_type] if not isinstance(self_type, list) else self_type
+        if lead_arg_given:
+            if classmethod_for_given:
+                S = [classmethod_for] if not isinstance(classmethod_for, list) else classmethod_for
+                S = [ArgSpec(c=c) for c in S]
+            else:
+                S = [self_type] if not isinstance(self_type, list) else self_type
             d = len(P) - len(S)
             while d > 0:
                 S.append(S[-1])
@@ -644,9 +677,9 @@ sympy_unit_tests_callables = [
     c(limit, [Expr, Symbol, Expr], {'dir': s.SIGN}),
 
     c(Interval, [Expr, Expr]),
-    c(Interval.Lopen, [Expr, Expr], self_type=Interval),
-    c(Interval.Ropen, [Expr, Expr], self_type=Interval),
-    c(Interval.open, [Expr, Expr], self_type=Interval),
+    c(Interval.Lopen, [Expr, Expr], classmethod_for=Interval),
+    c(Interval.Ropen, [Expr, Expr], classmethod_for=Interval),
+    c(Interval.open, [Expr, Expr], classmethod_for=Interval),
 ]
 
 sympy_unit_tests_c2ac = {ac.callable: ac for ac in sympy_unit_tests_callables}
