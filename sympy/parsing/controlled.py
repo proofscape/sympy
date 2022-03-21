@@ -68,9 +68,10 @@ class ControlledEvaluator(ast.NodeTransformer):
         'Load',
     ]
 
-    def __init__(self, local_dict, global_dict):
+    def __init__(self, local_dict, global_dict, log_path=None):
         self.local_dict = local_dict
         self.global_dict = global_dict
+        self.log_path = log_path
 
     def generic_visit(self, node):
         classname = node.__class__.__name__
@@ -124,56 +125,51 @@ class ControlledEvaluator(ast.NodeTransformer):
             # Replace the bound method with the underlying function.
             F = F.__func__
 
-        mod = getattr(F, '__module__', None) or ''
-        # FIXME:
-        #  Instead of "whitelisting" every function in sympy (really a blacklist),
-        #  let's use an explicit list of approved callables.
-        if (
-            mod == 'sympy' or mod.startswith('sympy.') or
-            isinstance(F, UndefinedFunction) or
-            F is abs or F is pow or
-            F in self.local_dict.values()
-        ):
-            # LOG
-            import traceback, json
-            with open('foo.txt', 'a') as f:
-                mod = getattr(F, "__module__", "<nomod>")
-                name = getattr(F, "__qualname__", "<noname>")
-                class_ = str(getattr(F, "__class__", "<noclass>"))
-                arg_types = [str(type(a)) for a in A]
-                kwarg_types = {k:str(type(v)) for k, v in K.items()}
-                stack = traceback.format_stack()
+        if self.log_path:
+            self.log_call_attempt(F, A, K)
 
-                #if name in ['Function'] and A and isinstance(A[0], str):
-                #    print('foo')
-
-                allow = '<none>'
-                if isinstance(F, UndefinedFunction):
-                    allow = '<ok>.<undef_func>'
-                elif F in self.local_dict.values():
-                    allow = '<ok>.<local_dict>'
-                else:
-                    ac = sympy_unit_tests_c2ac.get(F)
-                    if ac is None:
-                        allow = '<unknown>'
-                    else:
-                        result = ac.check_args(A, K)
-                        if isinstance(result, CheckedArgs):
-                            allow = '<ok>.<whitelist>'
-                        else:
-                            allow = f'<fail>:{result}'
-
-                info = {
-                    "mod": mod, "name": name, "class": class_,
-                    "arg_types": arg_types, "kwarg_types": kwarg_types,
-                    "stack": stack,
-                    "allow": allow,
-                }
-                t = json.dumps(info)+'\n'+("%"*80)+'\n'
-                f.write(t)
-            # ---
+        if (isinstance(F, UndefinedFunction) or (F in self.local_dict.values())):
             return F(*A, **K)
+        elif F in sympy_unit_tests_c2ac:
+            ac = sympy_unit_tests_c2ac[F]
+            return ac(*A, **K)
+
         raise ControlledEvaluationException(f'Disallowed callable: {getattr(F, "__name__", "<noname>")}')
+
+    def log_call_attempt(self, F, A, K):
+        import traceback, json
+        with open(self.log_path, 'a') as f:
+            mod = getattr(F, "__module__", "<nomod>")
+            name = getattr(F, "__qualname__", "<noname>")
+            class_ = str(getattr(F, "__class__", "<noclass>"))
+            arg_types = [str(type(a)) for a in A]
+            kwarg_types = {k:str(type(v)) for k, v in K.items()}
+            stack = traceback.format_stack()
+
+            allow = '<none>'
+            if isinstance(F, UndefinedFunction):
+                allow = '<ok>.<undef_func>'
+            elif F in self.local_dict.values():
+                allow = '<ok>.<local_dict>'
+            else:
+                ac = sympy_unit_tests_c2ac.get(F)
+                if ac is None:
+                    allow = '<unknown>'
+                else:
+                    result = ac.check_args(A, K)
+                    if isinstance(result, CheckedArgs):
+                        allow = '<ok>.<whitelist>'
+                    else:
+                        allow = f'<fail>:{result}'
+
+            info = {
+                "mod": mod, "name": name, "class": class_,
+                "arg_types": arg_types, "kwarg_types": kwarg_types,
+                "stack": stack,
+                "allow": allow,
+            }
+            t = json.dumps(info)+'\n'+("%"*80)+'\n'
+            f.write(t)
 
     def visit_Name(self, node):
         name = node.id

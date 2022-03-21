@@ -1088,7 +1088,7 @@ def parse_expr(s, local_dict=None, transformations=standard_transformations,
     node = ast.Expr(node.body[0].value)
 
     try:
-        ce = ControlledEvaluator(local_dict, global_dict)
+        ce = ControlledEvaluator(local_dict, global_dict, log_path='foo.txt')
         rv = ce.visit(node)
         # restore neutral definitions for names
         for i in local_dict.pop(null, ()):
