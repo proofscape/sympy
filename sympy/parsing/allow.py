@@ -1,5 +1,6 @@
 """Allowed callables, for safer parsing. """
 
+from enum import Enum
 import re
 import types
 
@@ -13,7 +14,7 @@ UNICODE_WORD = re.compile(r'\w+$')
 NUMBER_PATTERN = re.compile(r'\d*(\.\d*)?(e\d+)?')
 
 
-class StrPermType:
+class StrPermType(Enum):
     # Reject all strings:
     NONE = "NONE"
     # Any string is accepted:
@@ -111,9 +112,7 @@ class ArgSpec:
         """
         if isinstance(other, (ArgSpec, Tail)):
             return other
-        elif isinstance(other, str):
-            # FIXME: we should turn StrPermType into a proper Enum class,
-            #  and then use a better check here.
+        elif isinstance(other, StrPermType):
             return cls(s=other)
         else:
             return cls(other)
@@ -125,8 +124,7 @@ class ArgSpec:
         if self.class_ is not None:
             return arg == self.class_
         elif isinstance(arg, str):
-            if isinstance(self.strings, str):
-                # FIXME: use better test based on proper Enum class
+            if isinstance(self.strings, StrPermType):
                 return string_is_permitted(arg, self.strings)
             return False
         else:
