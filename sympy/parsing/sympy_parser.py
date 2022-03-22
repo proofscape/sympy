@@ -15,6 +15,7 @@ from sympy.assumptions.ask import AssumptionKeys
 from sympy.core.basic import Basic
 from sympy.core import Symbol
 from sympy.core.function import arity, UndefinedFunction
+from sympy.parsing.callables.unit_test_support import callables as ut_callables
 from sympy.parsing.controlled import ControlledEvaluator
 from sympy.utilities.iterables import iterable
 from sympy.utilities.misc import filldedent, func_name
@@ -1088,7 +1089,7 @@ def parse_expr(s, local_dict=None, transformations=standard_transformations,
     node = ast.Expr(node.body[0].value)
 
     try:
-        ce = ControlledEvaluator(local_dict, global_dict, log_path='foo.txt')
+        ce = ControlledEvaluator(ut_callables, local_dict, global_dict, log_path='foo.txt')
         rv = ce.visit(node)
         # restore neutral definitions for names
         for i in local_dict.pop(null, ()):

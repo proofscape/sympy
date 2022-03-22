@@ -1,6 +1,5 @@
-from sympy.parsing.allow import (
-    AllowedCallable, BadArgs, CannotCall, Signature, Tail
-)
+from sympy.parsing.allow import AllowedCallable, Signature, Tail
+from sympy.parsing.exceptions import BadArgs, CannotCall
 from sympy.testing.pytest import raises
 
 

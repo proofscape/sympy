@@ -9,7 +9,7 @@ from sympy.functions import exp, factorial, factorial2, sin
 from sympy.logic import And
 from sympy.series import Limit
 from sympy.testing.pytest import raises, skip
-from sympy.parsing.controlled import ControlledEvaluationException
+from sympy.parsing.exceptions import ControlledEvaluationException
 from sympy.parsing.sympy_parser import (
     parse_expr, standard_transformations, rationalize, TokenError,
     split_symbols, implicit_multiplication, convert_equals_signs,
@@ -351,6 +351,4 @@ def test_controlled_eval():
         raises(ControlledEvaluationException, lambda: parse_expr("solve.__globals__['__builtins__'].__dict__['eval']('1 + 2')"))
         assert parse_expr("solve.__globals__['__builtins__'].__dict__['abs'](-2)") == 2
 
-    #raises(ControlledEvaluationException, lambda: parse_expr('sympify("foo")'))
-
-    raises(ControlledEvaluationException, lambda: parse_expr('10**1000'))
+    raises(ControlledEvaluationException, lambda: parse_expr('S("foo[bar]")'))

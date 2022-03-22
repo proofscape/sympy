@@ -4,17 +4,8 @@ import ast
 import types
 
 from sympy.core.function import UndefinedFunction
-from sympy.core.numbers import Integer
 from sympy.core.relational import Relational
-from sympy.core.sympify import SympifyError
-
-from sympy.parsing.allow import (
-    sympy_unit_tests_c2ac, ParsingExcep, CheckedArgs
-)
-
-
-class ControlledEvaluationException(SympifyError):
-    ...
+from sympy.parsing.exceptions import ControlledEvaluationException
 
 
 class ControlledEvaluator(ast.NodeTransformer):
@@ -26,7 +17,8 @@ class ControlledEvaluator(ast.NodeTransformer):
         (2) is a value in the given locals dict
         (3) on an explicit whitelist of functions
 
-    * Limits the size of operands to mult and pow.
+    * Supports limiting the size of operands to mult and pow (subclasses
+      must override to implement this).
     """
 
     translate = {
@@ -68,7 +60,8 @@ class ControlledEvaluator(ast.NodeTransformer):
         'Load',
     ]
 
-    def __init__(self, local_dict, global_dict, log_path=None):
+    def __init__(self, allowed_callables, local_dict, global_dict, log_path=None):
+        self.allowed_callables = allowed_callables
         self.local_dict = local_dict
         self.global_dict = global_dict
         self.log_path = log_path
@@ -130,14 +123,15 @@ class ControlledEvaluator(ast.NodeTransformer):
 
         if (isinstance(F, UndefinedFunction) or (F in self.local_dict.values())):
             return F(*A, **K)
-        elif F in sympy_unit_tests_c2ac:
-            ac = sympy_unit_tests_c2ac[F]
+        elif F in self.allowed_callables:
+            ac = self.allowed_callables[F]
             return ac(*A, **K)
 
-        raise ControlledEvaluationException(f'Disallowed callable: {getattr(F, "__name__", "<noname>")}')
+        raise ControlledEvaluationException(f'Disallowed callable: {getattr(F, "__module__", "<nomod>")}.{getattr(F, "__qualname__", "<noname>")}')
 
     def log_call_attempt(self, F, A, K):
         import traceback, json
+        from sympy.parsing.allow import CheckedArgs
         with open(self.log_path, 'a') as f:
             mod = getattr(F, "__module__", "<nomod>")
             name = getattr(F, "__qualname__", "<noname>")
@@ -152,7 +146,7 @@ class ControlledEvaluator(ast.NodeTransformer):
             elif F in self.local_dict.values():
                 allow = '<ok>.<local_dict>'
             else:
-                ac = sympy_unit_tests_c2ac.get(F)
+                ac = self.allowed_callables.get(F)
                 if ac is None:
                     allow = '<unknown>'
                 else:
@@ -197,10 +191,26 @@ class ControlledEvaluator(ast.NodeTransformer):
         self.recurse(node)
         L, R = node.left, node.right
         if is_pow:
-            pow_check(L, R)
+            self.pow_check(L, R)
         if is_mult:
-            mult_check(L, R)
+            self.mult_check(L, R)
         return node.op(L, R)
+
+    def pow_check(self, b, e):
+        """
+        Subclasses may wish to override.
+        This is a chance to raise an exception and prevent an operation on
+        arguments that are too large.
+        """
+        pass
+
+    def mult_check(self, a, b):
+        """
+        Subclasses may wish to override.
+        This is a chance to raise an exception and prevent an operation on
+        arguments that are too large.
+        """
+        pass
 
     def visit_BoolOp(self, node):
         self.recurse(node)
@@ -254,26 +264,3 @@ class ControlledEvaluator(ast.NodeTransformer):
 
     def visit_NameConstant(self, node):
         return node.value
-
-    ###########################################################################
-
-EXPONENT_CAP = 100
-INT_DIGIT_CAP = 200
-
-
-def pow_check(b, e):
-    if isinstance(b, (int, Integer)) and isinstance(e, (int, Integer)):
-        # There is a largest exponent that we will allow, regardless of the base:
-        if abs(e) > EXPONENT_CAP:
-            raise ControlledEvaluationException(f'Exponent too large: {e}.')
-        # For smaller exponents we allow larger bases, but we don't want the total
-        # number of digits in the power to grow too large. We estimate this as the
-        # number of decimal digits in the base, times the exponent itself.
-        if len(str(b)) * abs(e) > INT_DIGIT_CAP:
-            raise ControlledEvaluationException(f'Power too large: {b}^{e}.')
-
-
-def mult_check(a, b):
-    if isinstance(a, (int, Integer)) and isinstance(b, (int, Integer)):
-        if len(str(a)) + len(str(b)) > INT_DIGIT_CAP:
-            raise ControlledEvaluationException(f'Product too large: {a}*{b}.')

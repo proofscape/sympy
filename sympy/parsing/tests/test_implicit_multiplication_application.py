@@ -11,6 +11,7 @@ from sympy.parsing.sympy_parser import (
     split_symbols_custom,
     _token_splittable
 )
+from sympy.parsing.exceptions import ControlledEvaluationException
 from sympy.testing.pytest import raises
 
 
@@ -67,7 +68,7 @@ def test_implicit_application():
     for case in multiplication:
         raises(SyntaxError,
                lambda: parse_expr(case, transformations=transformations2))
-    raises(TypeError,
+    raises(ControlledEvaluationException,
            lambda: parse_expr('sin**2(x)', transformations=transformations2))
 
 
