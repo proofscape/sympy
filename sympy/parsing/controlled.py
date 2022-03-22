@@ -66,6 +66,14 @@ class ControlledEvaluator(ast.NodeTransformer):
         self.global_dict = global_dict
         self.log_path = log_path
 
+    def visit(self, node):
+        """Visit a node."""
+        method = 'visit_' + node.__class__.__name__
+        with open('bar.txt', 'a') as f:
+            f.write(method + '\n')
+        visitor = getattr(self, method, self.generic_visit)
+        return visitor(node)
+
     def generic_visit(self, node):
         classname = node.__class__.__name__
         if classname in self.pass_through:
