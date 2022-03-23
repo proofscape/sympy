@@ -1089,7 +1089,11 @@ def parse_expr(s, local_dict=None, transformations=standard_transformations,
     node = ast.Expr(node.body[0].value)
 
     try:
-        ce = ControlledEvaluator(ut_callables, local_dict, global_dict, log_path='foo.txt')
+        ce = ControlledEvaluator(local_dict, global_dict,
+                                 allow_undef_func_calls=True,
+                                 allow_local_dict_calls=True,
+                                 log_path='foo.txt')
+        ce.add_allowed_callables(ut_callables)
         rv = ce.visit(node)
         # restore neutral definitions for names
         for i in local_dict.pop(null, ()):

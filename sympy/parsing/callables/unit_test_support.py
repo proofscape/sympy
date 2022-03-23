@@ -3,10 +3,6 @@ Define a minimal set of allowed callables, just sufficient to allow the entire
 SymPy unit test suite to pass.
 """
 
-from typing import List, Tuple, Dict, Sequence, Optional as o, Union as u
-
-from sympy.parsing.allow import AllowedCallable, ArgSpec, StrPermType, Tail
-
 from sympy.assumptions import Q
 
 from sympy.core.basic import Basic
@@ -61,10 +57,15 @@ from sympy.series.limits import Limit, limit
 from sympy.sets.sets import Interval
 
 
-c = AllowedCallable
-s = StrPermType
-a = ArgSpec
-t = Tail
+from typing import List, Tuple, Dict, Sequence, Optional as o, Union as u
+
+from sympy.parsing.allow import (
+    ArgSpec as a,
+    AllowedCallable as c,
+    StrPermType as s,
+    Tail as t
+)
+
 
 Bool = u[Boolean, bool]
 Int = u[Integer, int]
@@ -73,7 +74,7 @@ fExpr = u[Expr, float]
 fiExpr = u[Expr, float, int]
 
 
-ac_list = [
+callables = [
     c(abs, [Expr]),
     c(pow, [Expr, Expr, t(Int)]),
 
@@ -194,5 +195,3 @@ ac_list = [
     c(Interval.Ropen, [Expr, Expr], classmethod_of=Interval),
     c(Interval.open, [Expr, Expr], classmethod_of=Interval),
 ]
-
-callables = {ac.callable: ac for ac in ac_list}

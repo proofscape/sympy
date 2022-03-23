@@ -8,6 +8,143 @@ from sympy.core.relational import Relational
 from sympy.parsing.exceptions import ControlledEvaluationException
 
 
+def is_builtin_method(m):
+    """
+    Try to identify built-in methods.
+
+    Observe:
+
+    >>> type(str.join)
+    method_descriptor
+    >>> type('foo'.join)
+    builtin_function_or_method
+
+    >>> repr(str.join)
+    "<method 'join' of 'str' objects>"
+    >>> repr('foo'.join)
+    '<built-in method join of str object at 0x10ba8c8f0>'
+
+    In the technical parlance of Python, a generic method like `str.join` of
+    a built-in type is a "method descriptor," while the particular method like
+    `'foo'.join` belonging to an instance of a built-in type is a "built-in
+    method."
+
+    Given any object, how do you determine if it's a built-in method?
+
+    This is a good start:
+
+    >>> import types
+    >>> type('foo'.join) == types.BuiltinMethodType
+    True
+
+    but unfortunately it does not distinguish a built-in method from a built-in
+    function:
+
+    >>> type(len) == types.BuiltinMethodType
+    True
+
+    Nor does this:
+
+    >>> type(len) == types.BuiltinFunctionType
+    True
+    >>> type('foo'.join) == types.BuiltinFunctionType
+    True
+
+    However, we can consider the qualname:
+
+    >>> 'foo'.join.__qualname__
+    'str.join'
+    >>> len.__qualname__
+    'len'
+
+    which should have two segments for built-in methods, but just one segment
+    for built-in functions.
+
+    We can also consult the ``__self__`` attribute, which is equal to the
+    builins module for built-in functions:
+
+    >>> s = 'foo'
+    >>> s.join.__self__ is s
+    True
+    >>> len.__self__
+    <module 'builtins' (built-in)>
+
+    This is an important test, because when we use this function to identify
+    a built-in method, we are going to be passing that method's ``__self__``
+    attribute as the first argument, and it sounds risky to go passing the
+    builtins module as any argument to any function (even if it would be
+    blocked by argument type checking).
+    """
+    q = getattr(m, '__qualname__', '')
+    s = getattr(m, '__self__', None)
+    return (
+        type(m) == types.BuiltinMethodType and
+        type(s) != types.ModuleType and
+        len(q.split('.')) == 2
+    )
+
+
+def make_key_for_callable(callable):
+    """
+    One of our basic safety mechanisms is that, apart from a couple of special
+    cases (namely, instances of `UndefinedFunction`, or functions passed to
+    a `ControlledEvaluator` as locals), we do not call any object that we are
+    handed. Instead, we use the object we are handed to look up an
+    ``AllowedCallable`` instance, and then we call that. Thus, we only ever
+    call things that we constructed and approved in advance, not things users
+    constructed.
+
+    For this to work, we need a way to translate any given callable into a key,
+    with which we can look up the corresponding AllowedCallable. For most
+    types of callables, this is easy: for built-in functions, user-defined
+    functions, and user-defined classes, the callable itself can be used as
+    the key. For bound methods of user-defined classes, we can use the
+    ``__func__`` attribute, which points to the unbound function.
+
+    For built-in methods, however, there is no ``__func__`` attribute, and we
+    instead use their ``__qualname__`` attribute (which is a string).
+
+    In order to understand the problem, we need to contrast built-in methods
+    with the methods of user-defined classes. The great thing about the latter
+    is that bound methods of user-defined classes have a ``__func__`` attribute,
+    which is equal to the underlying method:
+
+    >>> class Foo:
+    >>>     def bar(self):
+    >>>         return 42
+    >>> f = Foo()
+    >>> f.bar.__func__ == Foo.bar
+    True
+
+    This means that when we're defining an ``AllowedCallable`` for ``Foo.bar``,
+    we can pass ``Foo.bar`` as the callable, and later, when a user tries to
+    invoke `f.bar()`, we can use `f.bar.__func__` as the key.
+
+    This does not work with built-in methods. The analogy is that ``f.bar`` is
+    to ``Foo.bar`` as ``'foo'.join`` is to ``str.join``. The latter is called
+    a "method descriptor." We would like ``'foo'.join`` to have a ``__func__``
+    attribute, and we would like it to be equal to ``str.join``, but this is
+    not the case:
+
+    >>> hasattr('foo'.join, '__func__')
+    False
+
+    We cannot compare to the method desriptor directly either:
+
+    >>> 'foo'.join == str.join
+    False
+
+    Since for everything *except* built-in methods, the key is a callable (not
+    a string), we can use the ``__qualname__`` of a built-in method as its key,
+    without fear of this string colliding with any other key.
+    """
+    if is_builtin_method(callable):
+        return callable.__qualname__
+    elif type(callable) == types.MethodType:
+        return callable.__func__
+    return callable
+
+
 class ControlledEvaluator(ast.NodeTransformer):
     """
     Supports a subset of the Python language, and...
@@ -60,11 +197,24 @@ class ControlledEvaluator(ast.NodeTransformer):
         'Load',
     ]
 
-    def __init__(self, allowed_callables, local_dict, global_dict, log_path=None):
-        self.allowed_callables = allowed_callables
+    def __init__(self, local_dict, global_dict,
+                 allow_undef_func_calls=False,
+                 allow_local_dict_calls=False,
+                 log_path=None):
+        self.allowed_callables = {}
         self.local_dict = local_dict
         self.global_dict = global_dict
+        self.allow_undef_func_calls = allow_undef_func_calls
+        self.allow_local_dict_calls = allow_local_dict_calls
         self.log_path = log_path
+
+    def add_allowed_callables(self, acs):
+        """
+        Add a list (or other iterable) of ``AllowedCallable``s.
+        """
+        for ac in acs:
+            k = make_key_for_callable(ac.callable)
+            self.allowed_callables[k] = ac
 
     def visit(self, node):
         """Visit a node."""
@@ -117,25 +267,36 @@ class ControlledEvaluator(ast.NodeTransformer):
         A = node.args or []
         K = {k: v for k, v in node.keywords}
 
-        # Unbind bound methods.
-        # This is so we can look for the underlying function in our list of allowed functions.
-        if type(F) == types.MethodType:
-            # Prepend the `self` arg to the list of args.
-            self_arg = F.__self__
-            A = [self_arg] + A
-            # Replace the bound method with the underlying function.
-            F = F.__func__
-
         if self.log_path:
             self.log_call_attempt(F, A, K)
 
-        if (isinstance(F, UndefinedFunction) or (F in self.local_dict.values())):
+        if self.allow_undef_func_calls and isinstance(F, UndefinedFunction):
             return F(*A, **K)
-        elif F in self.allowed_callables:
-            ac = self.allowed_callables[F]
+
+        if self.allow_local_dict_calls and F in self.local_dict.values():
+            return F(*A, **K)
+
+        if is_builtin_method(F) or type(F) == types.MethodType:
+            # When `F` is a bound method, the callable we end up calling is
+            # always the unbound version. So must prepend the `self` arg.
+            A = [F.__self__] + A
+
+        key = make_key_for_callable(F)
+        if key in self.allowed_callables:
+            ac = self.allowed_callables[key]
             return ac(*A, **K)
+        else:
+            self.provide_help_for_missing_callable(key)
 
         raise ControlledEvaluationException(f'Disallowed callable: {getattr(F, "__module__", "<nomod>")}.{getattr(F, "__qualname__", "<noname>")}')
+
+    def provide_help_for_missing_callable(self, key):
+        """
+        Subclasses may wish to override.
+        This is a chance to provide the user with a helpful error message,
+        in the case that a callable of a given key was not found.
+        """
+        pass
 
     def log_call_attempt(self, F, A, K):
         import traceback, json
