@@ -3,13 +3,14 @@
 
 import sys
 
+from displaylang.exceptions import ControlledEvaluationException
+
 from sympy.assumptions import Q
 from sympy.core import Symbol, Function, Float, Rational, Integer, I, Mul, Pow, Eq
 from sympy.functions import exp, factorial, factorial2, sin
 from sympy.logic import And
 from sympy.series import Limit
 from sympy.testing.pytest import raises, skip
-from sympy.parsing.exceptions import ControlledEvaluationException
 from sympy.parsing.sympy_parser import (
     parse_expr, standard_transformations, rationalize, TokenError,
     split_symbols, implicit_multiplication, convert_equals_signs,
@@ -344,11 +345,9 @@ def test_controlled_eval():
         # We're not in PyPy
         raises(ControlledEvaluationException, lambda: parse_expr("solve.__globals__['__builtins__']['exec']('1 + 2')"))
         raises(ControlledEvaluationException, lambda: parse_expr("solve.__globals__['__builtins__']['eval']('1 + 2')"))
-        assert parse_expr("solve.__globals__['__builtins__']['abs'](-2)") == 2
     else:
         # We're in PyPy
         raises(ControlledEvaluationException, lambda: parse_expr("solve.__globals__['__builtins__'].__dict__['exec']('1 + 2')"))
         raises(ControlledEvaluationException, lambda: parse_expr("solve.__globals__['__builtins__'].__dict__['eval']('1 + 2')"))
-        assert parse_expr("solve.__globals__['__builtins__'].__dict__['abs'](-2)") == 2
 
     raises(ControlledEvaluationException, lambda: parse_expr('S("foo[bar]")'))

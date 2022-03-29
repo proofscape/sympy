@@ -11,12 +11,14 @@ from io import StringIO
 import builtins
 import types
 
+from displaylang.evaluate import SymPyExpressionEvaluator
+
 from sympy.assumptions.ask import AssumptionKeys
 from sympy.core.basic import Basic
 from sympy.core import Symbol
 from sympy.core.function import arity, UndefinedFunction
-from sympy.parsing.callables.unit_test_support import callables as ut_callables
-from sympy.parsing.controlled import ControlledEvaluator
+from sympy.core.relational import Relational
+from sympy.parsing.allowed_callables import callables as unit_test_callables
 from sympy.utilities.iterables import iterable
 from sympy.utilities.misc import filldedent, func_name
 from sympy.functions.elementary.miscellaneous import Max, Min
@@ -1089,12 +1091,14 @@ def parse_expr(s, local_dict=None, transformations=standard_transformations,
     node = ast.Expr(node.body[0].value)
 
     try:
-        ce = ControlledEvaluator(local_dict, global_dict,
-                                 allow_undef_func_calls=True,
-                                 allow_local_dict_calls=True,
-                                 log_path='foo.txt')
-        ce.add_allowed_callables(ut_callables)
-        rv = ce.visit(node)
+        evaluator = SymPyExpressionEvaluator(
+            global_dict, local_dict,
+            allow_local_var_calls=True,
+            abstract_function_classes=[UndefinedFunction],
+            abstract_relation_classes=[Relational]
+        )
+        evaluator.add_allowed_callables(unit_test_callables)
+        rv = evaluator.visit(node)
         # restore neutral definitions for names
         for i in local_dict.pop(null, ()):
             local_dict[i] = null

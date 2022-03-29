@@ -1,3 +1,4 @@
+from displaylang.exceptions import ControlledEvaluationException
 import sympy
 from sympy.parsing.sympy_parser import (
     parse_expr,
@@ -11,7 +12,6 @@ from sympy.parsing.sympy_parser import (
     split_symbols_custom,
     _token_splittable
 )
-from sympy.parsing.exceptions import ControlledEvaluationException
 from sympy.testing.pytest import raises
 
 

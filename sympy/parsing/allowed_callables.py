@@ -59,7 +59,7 @@ from sympy.sets.sets import Interval
 
 from typing import List, Tuple, Dict, Sequence, Optional as o, Union as u
 
-from sympy.parsing.allow import (
+from displaylang.allow import (
     ArgSpec as a,
     AllowedCallable as c,
     StrPermType as s,
