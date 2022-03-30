@@ -74,6 +74,43 @@ will need to either add a `warnings` filter as above or use pytest to filter
 SymPy deprecation warnings.
 ```
 
+## Version 1.11
+
+(mathematica-parser-new)=
+### New Mathematica code parser
+
+The old mathematica code parser defined in the module ``sympy.parsing.mathematica``
+in the function ``mathematica`` is deprecated. The function ``parse_mathematica``
+with a new and more comprehensive parser should be used instead.
+
+The ``additional_translations`` parameter for the Mathematica parser is not available
+in ``parse_mathematica``.
+Additional translation rules to convert Mathematica expressions into SymPy ones
+should be specified after the conversion using SymPy's ``.replace( )`` or ``.subs( )``
+methods on the output expression. If the translator fails to recognize the logical
+meaning of a Mathematica expression, a form similar to Mathematica's full form
+will be returned, using SymPy's ``Function`` object to encode the nodes of the
+syntax tree.
+
+For example, suppose you want ``F`` to be a function that returns the maximum
+value multiplied by the minimum value, the previous way to
+specify this conversion was:
+
+```py
+>>> from sympy.parsing.mathematica import mathematica
+>>> mathematica('F[7,5,3]', {'F[*x]': 'Max(*x)*Min(*x)'})
+21
+```
+
+Now you can do the same with
+
+```py
+>>> from sympy.parsing.mathematica import parse_mathematica
+>>> from sympy import Function, Max, Min
+>>> parse_mathematica("F[7,5,3]").replace(Function("F"), lambda *x: Max(*x)*Min(*x))
+21
+```
+
 ## Version 1.10
 
 (deprecated-traversal-functions-moved)=
