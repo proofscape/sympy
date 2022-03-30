@@ -9,10 +9,11 @@ from displaylang.exceptions import ControlledEvaluationException
 
 from sympy.assumptions import Q
 from sympy.core import Symbol, Function, Float, Rational, Integer, I, Mul, Pow, Eq
-from sympy.functions import exp, factorial, factorial2, sin, Min, Max
-from sympy.logic import And
+from sympy.core.function import AppliedUndef
+from sympy.functions import exp, factorial, factorial2, sin
 from sympy.series import Limit
 from sympy.testing.pytest import raises, skip
+from sympy.parsing.allowed_callables import global_dict as known_globals
 from sympy.parsing.sympy_parser import (
     parse_expr, standard_transformations, rationalize, TokenError,
     split_symbols, implicit_multiplication, convert_equals_signs,
@@ -67,9 +68,7 @@ def test_sympy_parser():
     raises(TypeError, lambda:
         parse_expr('x', transformations=(lambda x,y: 1,)))
     raises(TypeError, lambda: parse_expr('x', transformations=((),)))
-    raises(TypeError, lambda: parse_expr('x', {}, [], []))
-    raises(TypeError, lambda: parse_expr('x', [], [], {}))
-    raises(TypeError, lambda: parse_expr('x', [], [], {}))
+    raises(TypeError, lambda: parse_expr('x', [], []))
 
 
 def test_rationalize():
@@ -139,35 +138,20 @@ def test_local_dict_symbol_to_fcn():
     raises(TypeError, lambda: parse_expr('foo(x)', local_dict=d))
 
 
-def test_global_dict():
-    global_dict = {
-        'Symbol': Symbol
-    }
-    inputs = {
-        'Q & S': And(Symbol('Q'), Symbol('S'))
-    }
-    for text, result in inputs.items():
-        assert parse_expr(text, global_dict=global_dict) == result
-
-
-def test_no_globals():
-
-    # Replicate creating the default global_dict:
-    default_globals = {}
-    exec('from sympy import *', default_globals)
+def test_other_names_unrecognized():
+    # Start with everything from sympy and builtins:
+    all_names = {}
+    exec('from sympy import *', all_names)
     builtins_dict = vars(builtins)
     for name, obj in builtins_dict.items():
         if isinstance(obj, types.BuiltinFunctionType):
-            default_globals[name] = obj
-    default_globals['max'] = Max
-    default_globals['min'] = Min
-
-    # Need to include Symbol or parse_expr will not work:
-    default_globals.pop('Symbol')
-    global_dict = {'Symbol':Symbol}
-
-    for name in default_globals:
-        obj = parse_expr(name, global_dict=global_dict)
+            all_names[name] = obj
+    # Exclude the names we are supposed to recognize:
+    other_names = {k: v for k, v in all_names.items()
+                   if not k in known_globals}
+    # Everything else should be made into a Symbol:
+    for name in other_names:
+        obj = parse_expr(name)
         assert obj == Symbol(name)
 
 
@@ -360,8 +344,11 @@ def test_issue_22822():
 
 
 def test_controlled_eval():
-    raises(ControlledEvaluationException, lambda: parse_expr('exec("1 + 2")'))
-    raises(ControlledEvaluationException, lambda: parse_expr('eval("1 + 2")'))
+    r = parse_expr('exec("1 + 2")')
+    assert isinstance(r, AppliedUndef)
+
+    r = parse_expr('eval("1 + 2")')
+    assert isinstance(r, AppliedUndef)
 
     # In PyPy, FUNC.__globals__['__builtins__'] is a module, not a dict.
     if isinstance(Symbol.subs.__globals__['__builtins__'], dict):

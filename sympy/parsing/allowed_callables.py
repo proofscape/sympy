@@ -57,7 +57,7 @@ from sympy.series.limits import Limit, limit
 from sympy.sets.sets import Interval
 
 
-from typing import List, Tuple, Dict, Sequence, Optional as o, Union as u
+from typing import Tuple, Dict, Sequence, Union as u
 
 from displaylang.allow import (
     ArgSpec as a,
@@ -74,21 +74,13 @@ fExpr = u[Expr, float]
 fiExpr = u[Expr, float, int]
 
 
-callables = [
+basic_callables = [
     c(abs, [Expr]),
     c(pow, [Expr, Expr, t(Int)]),
-
-    c(Q.even, [Expr], name='EvenPredicate'),
 
     c(Add, [t(iExpr)], {'evaluate': bool}),
     c(Mul, [t(iExpr)], {'evaluate': bool}),
     c(Pow, [iExpr, iExpr], {'evaluate': bool}),
-
-    c(Expr.is_polynomial, [t(Symbol)], method_of=Expr),
-    c(Basic.subs, [
-        [Expr, Expr],
-        [u[Dict[Expr, Expr], Sequence[Tuple[Expr, Expr]]]],
-    ], {'simultaneous': bool}, method_of=Basic),
 
     c(UndefinedFunction, [s.UWORD]),
 
@@ -109,6 +101,7 @@ callables = [
         [Expr, Expr],
         [Bool, Bool],
     ]),
+
     c(S, [a(fiExpr, s.UWORD)], name="S"),
     c(Symbol, [s.UWORD]),
     c(symbols, [s.UWORD_CDL]),
@@ -191,7 +184,45 @@ callables = [
     c(limit, [Expr, Symbol, Expr], {'dir': s.SIGN}),
 
     c(Interval, [Expr, Expr]),
+]
+
+other_callables = [
+    c(Q.even, [Expr], name='EvenPredicate'),
+    c(Expr.is_polynomial, [t(Symbol)], method_of=Expr),
+    c(Basic.subs, [
+        [Expr, Expr],
+        [u[Dict[Expr, Expr], Sequence[Tuple[Expr, Expr]]]],
+    ], {'simultaneous': bool}, method_of=Basic),
     c(Interval.Lopen, [Expr, Expr], classmethod_of=Interval),
     c(Interval.Ropen, [Expr, Expr], classmethod_of=Interval),
     c(Interval.open, [Expr, Expr], classmethod_of=Interval),
 ]
+
+from sympy import (
+    beta, E, Eq, EulerGamma, gamma, GoldenRatio, I, ln,
+    oo, pi, Poly, solve, zeta,
+)
+
+other_basic_names = {
+    'Q': Q,
+    'rf': RisingFactorial,
+    'max': Max,
+    'min': Min,
+    'beta': beta,
+    'E': E,
+    'Eq': Eq,
+    'EulerGamma': EulerGamma,
+    'gamma': gamma,
+    'GoldenRatio': GoldenRatio,
+    'I': I,
+    'ln': ln,
+    'oo': oo,
+    'pi': pi,
+    'Poly': Poly,
+    'solve': solve,
+    'zeta': zeta,
+}
+
+callables = basic_callables + other_callables
+basic_callables_dict = {ac.name: ac.callable for ac in basic_callables}
+global_dict = {**basic_callables_dict, **other_basic_names}

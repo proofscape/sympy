@@ -8,8 +8,6 @@ from keyword import iskeyword
 import ast
 import unicodedata
 from io import StringIO
-import builtins
-import types
 from typing import Tuple as tTuple, Dict as tDict, Any, Callable, \
     List, Optional, Union as tUnion
 
@@ -20,10 +18,12 @@ from sympy.core.basic import Basic
 from sympy.core import Symbol
 from sympy.core.function import arity, UndefinedFunction
 from sympy.core.relational import Relational
-from sympy.parsing.allowed_callables import callables as unit_test_callables
+from sympy.parsing.allowed_callables import (
+    callables as unit_test_callables,
+    global_dict as unit_test_global_dict,
+)
 from sympy.utilities.iterables import iterable
 from sympy.utilities.misc import filldedent, func_name
-from sympy.functions.elementary.miscellaneous import Max, Min
 
 
 null = ''
@@ -904,8 +904,7 @@ def stringify_expr(s: str, local_dict: DICT, global_dict: DICT,
 
 def parse_expr(s: str, local_dict: Optional[DICT] = None,
                transformations: tUnion[tTuple[TRANS, ...], str] \
-                   = standard_transformations,
-               global_dict: Optional[DICT] = None, evaluate=True):
+                   = standard_transformations, evaluate=True):
     """Converts the string ``s`` to a SymPy expression, in ``local_dict``
 
     Parameters
@@ -916,11 +915,6 @@ def parse_expr(s: str, local_dict: Optional[DICT] = None,
 
     local_dict : dict, optional
         A dictionary of local variables to use when parsing.
-
-    global_dict : dict, optional
-        A dictionary of global variables. By default, this is initialized
-        with ``from sympy import *``; provide this parameter to override
-        this behavior (for instance, to parse ``"Q & S"``).
 
     transformations : tuple or str
         A tuple of transformation functions used to modify the tokens of the
@@ -1038,21 +1032,6 @@ def parse_expr(s: str, local_dict: Optional[DICT] = None,
     elif null in local_dict:
         raise ValueError('cannot use "" in local_dict')
 
-    if global_dict is None:
-        global_dict = {}
-        exec('from sympy import *', global_dict)
-
-        builtins_dict = vars(builtins)
-        for name, obj in builtins_dict.items():
-            if isinstance(obj, types.BuiltinFunctionType):
-                global_dict[name] = obj
-        global_dict['max'] = Max
-        global_dict['min'] = Min
-        global_dict['UndefinedFunction'] = UndefinedFunction
-
-    elif not isinstance(global_dict, dict):
-        raise TypeError('expecting global_dict to be a dict')
-
     transformations = transformations or ()
     if isinstance(transformations, str):
         if transformations == 'all':
@@ -1078,7 +1057,7 @@ def parse_expr(s: str, local_dict: Optional[DICT] = None,
                     takes 3 arguments'''))
 
     # Apply transformations. Result is still a string.
-    code = stringify_expr(s, local_dict, global_dict, _transformations)
+    code = stringify_expr(s, local_dict, unit_test_global_dict, _transformations)
 
     # Now we move to an AST
     node = ast.parse(code)
@@ -1089,7 +1068,7 @@ def parse_expr(s: str, local_dict: Optional[DICT] = None,
 
     try:
         evaluator = SymPyExpressionEvaluator(
-            global_dict, local_dict,
+            unit_test_global_dict, local_dict,
             allow_local_var_calls=True,
             abstract_function_classes=[UndefinedFunction],
             abstract_relation_classes=[Relational]
