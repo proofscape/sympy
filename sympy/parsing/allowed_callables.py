@@ -12,7 +12,7 @@ from sympy.core.expr import (
 from sympy.core.function import diff, UndefinedFunction
 from sympy.core.mod import Mod
 from sympy.core.numbers import Float, Integer, Number, Rational
-from sympy.core.relational import Equality, Relational
+from sympy.core.relational import Equality
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol, symbols
 
@@ -29,9 +29,6 @@ from sympy.functions.elementary.hyperbolic import (
 )
 from sympy.functions.elementary.miscellaneous import (
     cbrt, sqrt, Max, Min,
-)
-from sympy.functions.elementary.piecewise import (
-    Piecewise, ExprCondPair
 )
 from sympy.functions.elementary.trigonometric import (
     acos, acot, acsc, asec, asin, atan, atan2,
@@ -122,9 +119,6 @@ basic_callables = [
         [Expr],
         [Expr, Expr],
     ], {'evaluate': bool}),
-
-    c(Piecewise, [t(u[ExprCondPair, Tuple[Expr, Relational]])]),
-    c(ExprCondPair, [Expr, Relational]),
 
     c(cosh, [Expr], {'evaluate': bool}),
     c(coth, [Expr], {'evaluate': bool}),
