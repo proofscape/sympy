@@ -32,6 +32,22 @@ TOKEN = tTuple[int, str]
 DICT = tDict[str, Any]
 TRANS = Callable[[List[TOKEN], DICT, DICT], List[TOKEN]]
 
+
+def make_expression_evaluator(local_dict=None):
+    """
+    Construct a SymPyExpressionEvaluator.
+    """
+    local_dict = local_dict or {}
+    expression_evaluator = SymPyExpressionEvaluator(
+        unit_test_global_dict, local_dict,
+        allow_local_var_calls=True,
+        abstract_function_classes=[UndefinedFunction],
+        abstract_relation_classes=[Relational]
+    )
+    expression_evaluator.add_allowed_callables(unit_test_callables)
+    return expression_evaluator
+
+
 def _token_splittable(token_name: str) -> bool:
     """
     Predicate for whether a token name can be split into multiple tokens.
@@ -1067,13 +1083,7 @@ def parse_expr(s: str, local_dict: Optional[DICT] = None,
     node = ast.Expr(node.body[0].value)
 
     try:
-        evaluator = SymPyExpressionEvaluator(
-            unit_test_global_dict, local_dict,
-            allow_local_var_calls=True,
-            abstract_function_classes=[UndefinedFunction],
-            abstract_relation_classes=[Relational]
-        )
-        evaluator.add_allowed_callables(unit_test_callables)
+        evaluator = make_expression_evaluator(local_dict)
         rv = evaluator.visit(node)
         # restore neutral definitions for names
         for i in local_dict.pop(null, ()):
