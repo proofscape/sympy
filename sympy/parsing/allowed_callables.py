@@ -99,7 +99,11 @@ basic_callables = [
         [Bool, Bool],
     ]),
 
-    c(S, [a(fiExpr, s.UWORD)], name="S"),
+    # To be clear: supporting calls to `S` here means supporting cases where
+    # `parse_expr()` has been passed a string "...S(...)..." which itself
+    # describes a call to `S`.
+    c(S, [a(u[int, float, Integer, Float], s.UWORD)], name="S"),
+
     c(Symbol, [s.UWORD]),
     c(symbols, [s.UWORD_CDL]),
 
