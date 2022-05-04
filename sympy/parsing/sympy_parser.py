@@ -11,7 +11,7 @@ from io import StringIO
 from typing import Tuple as tTuple, Dict as tDict, Any, Callable, \
     List, Optional, Union as tUnion
 
-from displaylang.evaluate import SymPyExpressionEvaluator
+from displaylang.evaluate import ExpressionEvaluator
 
 from sympy.assumptions.ask import AssumptionKeys
 from sympy.core.basic import Basic
@@ -35,10 +35,10 @@ TRANS = Callable[[List[TOKEN], DICT, DICT], List[TOKEN]]
 
 def make_expression_evaluator(local_dict=None):
     """
-    Construct a SymPyExpressionEvaluator.
+    Construct an ExpressionEvaluator.
     """
     local_dict = local_dict or {}
-    expression_evaluator = SymPyExpressionEvaluator(
+    expression_evaluator = ExpressionEvaluator(
         unit_test_global_dict, local_dict,
         allow_local_var_calls=True,
         abstract_function_classes=[UndefinedFunction],

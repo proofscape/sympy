@@ -21,7 +21,7 @@ def test_allow_call():
     Test that calls with acceptable arguments go through without raising any
     exception.
 
-    NOTE: In `parse_expr()`, the code passed to a `SymPyExpressionEvaluator`
+    NOTE: In `parse_expr()`, the code passed to an `ExpressionEvaluator`
     has already been passed through the transformers. In particular, unknown
     names have been wrapped in calls to `Symbol()`.
 
